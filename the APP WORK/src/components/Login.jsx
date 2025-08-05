@@ -1,16 +1,58 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import assets from '../assets/assets.js';
 
 function Login() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+  });
+  const { email, password } = formData;
+  const [error, setError] = useState('');
   const navigate = useNavigate();
+  const { login, isAuthenticated, isLoading, error: authError } = useAuth();
 
-  const handleSubmit = (e) => {
+  // Debug useAuth
+  console.log('useAuth:', { login, isAuthenticated, isLoading, authError });
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/home');
+    }
+  }, [isAuthenticated, navigate]);
+
+  // Update error state if authError changes
+  useEffect(() => {
+    if (authError) {
+      setError(authError);
+    }
+  }, [authError]);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("Login:", { email, password });
-    navigate("/home");
+    setError('');
+
+    if (!email || !password) {
+      setError('Please fill in all fields');
+      return;
+    }
+
+    const result = await login(email, password);
+    if (result.success) {
+      navigate('/home');
+    } else {
+      setError(result.message || 'Login failed. Please try again.');
+    }
   };
 
   return (
@@ -29,34 +71,52 @@ function Login() {
             <label className="block text-sm font-medium text-gray-200 sm:text-base">Email</label>
             <input
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
               className="w-full neumorphic-input"
               placeholder="Enter your email"
               required
+              disabled={isLoading}
             />
           </div>
           <div>
             <div className="flex justify-between items-center">
               <label className="block text-sm font-medium text-gray-200 sm:text-base">Password</label>
-              <Link to="/forgot-password" className="text-sm text-cyan-400 hover:text-teal-400 transition-colors">
+              <Link to="/password?type=reset" className="text-sm text-cyan-400 hover:text-teal-400 transition-colors">
                 Forgot password?
               </Link>
             </div>
             <input
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              name="password"
+              value={formData.password}
+              onChange={handleChange}
               className="w-full neumorphic-input"
               placeholder="Enter your password"
               required
+              disabled={isLoading}
             />
           </div>
+          {error && (
+            <div className="text-red-400 text-sm mb-2 text-center">
+              {error}
+            </div>
+          )}
           <button
             type="submit"
-            className="w-full gradient-btn animate-pulse-slow"
+            className="w-full gradient-btn animate-pulse-slow flex justify-center items-center"
+            disabled={isLoading}
           >
-            Sign In
+            {isLoading ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Signing in...
+              </>
+            ) : 'Sign In'}
           </button>
           <div className="relative my-4">
             <div className="absolute inset-0 flex items-center">

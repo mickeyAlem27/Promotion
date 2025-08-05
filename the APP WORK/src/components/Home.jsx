@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiHeart, FiMessageSquare, FiShare2, FiPlus } from 'react-icons/fi';
+import { FiHeart, FiMessageSquare, FiShare2, FiPlus, FiUser } from 'react-icons/fi';
 import assets from '../assets/assets.js';
 import CreatePost from './CreatePost';
+import { useAuth } from '../context/AuthContext';
 const mockPosts = [
   {
     id: 1,
@@ -76,16 +77,52 @@ const featuredCreators = [
 ];
 
 function Home() {
+  const [posts, setPosts] = useState(mockPosts);
+  const [isCreatePostOpen, setIsCreatePostOpen] = useState(false);
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
+  const [userProfile, setUserProfile] = useState(null);
   const navigate = useNavigate();
+  
+  // Set user profile from auth context if available
+  useEffect(() => {
+    if (user) {
+      // Extract user data from the nested response structure
+      const userData = user.data || user; // Handle both direct and nested user data
+      console.log('Current user data:', userData); // Debug log
+      console.log('User first name:', userData.firstName);
+      console.log('User last name:', userData.lastName);
+      console.log('User object keys:', Object.keys(userData));
+      
+      setUserProfile({
+        ...userData,
+        avatar: userData.photo || 'https://randomuser.me/api/portraits/lego/1.jpg',
+        bio: userData.bio || 'No bio available',
+        skills: userData.skills || [],
+        role: userData.role || 'User',
+        name: `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || 'User',
+        firstName: userData.firstName,
+        lastName: userData.lastName
+      });
+      setIsLoading(false);
+    }
+  }, [user]);
 
   const handleProfileClick = (user) => {
     navigate(`/profile/${user.id}`, { state: { user } });
   };
 
   const handleCreatePost = () => {
-    console.log("Create new post");
     navigate("/CreatePost");
   };
+
+  if (authLoading || isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cyan-500"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-900">
@@ -97,6 +134,47 @@ function Home() {
       
       {/* Main Content */}
       <div className="relative z-10 pt-24 pb-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        {/* User Profile Section */}
+        {userProfile && (
+          <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-6 mb-8 border border-gray-700/50">
+            <div className="flex items-center space-x-6">
+              <div className="flex items-center space-x-4">
+                <div className="relative">
+                  <div 
+                    onClick={() => navigate('/profile')}
+                    className="cursor-pointer"
+                  >
+                    {userProfile?.photo ? (
+                      <img 
+                        src={userProfile.photo} 
+                        alt={`${userProfile.firstName || ''} ${userProfile.lastName || ''}`.trim()}
+                        className="w-16 h-16 rounded-full object-cover border-2 border-blue-500 hover:border-blue-400 transition-all duration-200"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded-full bg-gray-700 flex items-center justify-center hover:bg-gray-600 transition-colors duration-200">
+                        <FiUser className="text-2xl text-gray-400" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <span className="inline-block bg-blue-500 text-white text-xs font-bold px-2 py-1 rounded-full mb-1 capitalize">
+                    {userProfile?.role || 'User'}
+                  </span>
+                  <h2 
+                    className="text-xl font-bold text-white hover:text-blue-400 transition-colors duration-200 cursor-pointer"
+                    onClick={() => navigate('/profile')}
+                  >
+                    {userProfile?.firstName} {userProfile?.lastName}
+                  </h2>
+                </div>
+              </div>
+
+              </div>
+            </div>
+          
+        )};
+        
         {/* Hero Section */}
         <div className="text-center mb-16">
           <h1 className="text-4xl md:text-6xl font-bold bg-gradient-to-r from-teal-400 to-blue-500 bg-clip-text text-transparent mb-4">

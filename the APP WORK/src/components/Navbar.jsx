@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { FiHome, FiUser, FiLogIn, FiUserPlus, FiBriefcase, FiMessageSquare } from 'react-icons/fi';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { FiHome, FiUser, FiLogIn, FiUserPlus, FiBriefcase, FiMessageSquare, FiLogOut } from 'react-icons/fi';
+import { useAuth } from '../context/AuthContext';
 
 function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const location = useLocation();
-  const isAuthPage = ['/login', '/signup'].includes(location.pathname);
+  const navigate = useNavigate();
+  const { user, isAuthenticated, logout } = useAuth();
+  const isAuthPage = ['/login', '/signup', '/password'].includes(location.pathname);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -20,8 +23,12 @@ function Navbar() {
     { name: 'Home', path: '/home', icon: <FiHome className="mr-2" /> },
     { name: 'Jobs', path: '/jobs', icon: <FiBriefcase className="mr-2" /> },
     { name: 'Messages', path: '/messages', icon: <FiMessageSquare className="mr-2" /> },
-    { name: 'Profile', path: '/profile/user1', icon: <FiUser className="mr-2" /> },
   ];
+  
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   const isActive = (path) => location.pathname.startsWith(path);
 
@@ -39,7 +46,7 @@ function Navbar() {
 
             {/* Desktop Navigation */}
             <div className="hidden md:flex items-center space-x-6">
-              {!isAuthPage && navLinks.map((link, index) => (
+              {!isAuthPage && isAuthenticated && navLinks.map((link, index) => (
                 <Link
                   key={link.path}
                   to={link.path}
@@ -68,20 +75,38 @@ function Navbar() {
                   </Link>
                 </>
               ) : (
-                <Link
-                  to="/home"
-                  className="gradient-btn px-4 py-2 text-sm font-medium rounded-full hover:shadow-lg hover:shadow-cyan-500/30"
-                >
-                  Back to Home
-                </Link>
+                !isAuthPage && (
+                  <div className="flex space-x-4">
+                    <Link
+                      to="/login"
+                      className="px-4 py-2 text-sm font-medium text-white bg-cyan-600 rounded-md hover:bg-cyan-700 transition-colors"
+                    >
+                      Login
+                    </Link>
+                    <Link
+                      to="/signup"
+                      className="px-4 py-2 text-sm font-medium text-white bg-gray-700 rounded-md hover:bg-gray-600 transition-colors"
+                    >
+                      Sign Up
+                    </Link>
+                  </div>
+                )
               )}
             </div>
 
-            {/* Mobile Menu Button */}
-            <div className="md:hidden">
+            {/* Mobile menu button */}
+            <div className="md:hidden flex items-center space-x-2">
+              {isAuthenticated && !isAuthPage && (
+                <Link
+                  to="/profile/me"
+                  className="w-8 h-8 rounded-full bg-cyan-600 flex items-center justify-center text-white font-semibold text-sm"
+                >
+                  {user?.firstName?.charAt(0) || 'U'}
+                </Link>
+              )}
               <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="p-2 rounded-md text-gray-200 hover:text-white hover:bg-gray-800 focus:outline-none"
+                className="inline-flex items-center justify-center p-2 rounded-md text-gray-300 hover:text-white hover:bg-gray-700 focus:outline-none"
               >
                 <span className="sr-only">Toggle menu</span>
                 <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
