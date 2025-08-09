@@ -19,7 +19,23 @@ const ProtectedRoute = ({ children }) => {
   }
   
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    // Store the intended URL before redirecting to login
+    return <Navigate to={`/login?redirect=${encodeURIComponent(window.location.pathname)}`} replace />;
+  }
+  
+  return children;
+};
+
+// Public Route Component (for login/signup pages)
+const PublicRoute = ({ children }) => {
+  const { isAuthenticated, isLoading } = useAuth();
+  
+  if (isLoading) {
+    return <div>Loading...</div>;
+  }
+  
+  if (isAuthenticated) {
+    return <Navigate to="/home" replace />;
   }
   
   return children;
@@ -31,11 +47,27 @@ function App() {
       <BrowserRouter>
         <Navbar />
         <Routes>
-          <Route path="/" element={<Navigate to="/home" replace />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
-          <Route path="/password" element={<Password />} />
-          <Route path="/forgot-password" element={<Password />} />
+          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/login" element={
+            <PublicRoute>
+              <Login />
+            </PublicRoute>
+          } />
+          <Route path="/signup" element={
+            <PublicRoute>
+              <Signup />
+            </PublicRoute>
+          } />
+          <Route path="/password" element={
+            <PublicRoute>
+              <Password />
+            </PublicRoute>
+          } />
+          <Route path="/forgot-password" element={
+            <PublicRoute>
+              <Password />
+            </PublicRoute>
+          } />
           
           {/* Protected Routes */}
           <Route path="/home" element={

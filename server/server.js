@@ -14,12 +14,23 @@ const app = express();
 
 // Middleware
 app.use(express.json());
-app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:5173'],
+
+// CORS configuration
+const corsOptions = {
+  origin: ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
+};
+
+// Apply CORS with options
+app.use(cors(corsOptions));
+
+// Handle preflight requests
+app.options('*', cors(corsOptions));
+
 app.use(cookieParser(process.env.JWT_SECRET));
 
 // Connect to MongoDB

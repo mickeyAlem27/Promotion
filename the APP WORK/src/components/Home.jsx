@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiHeart, FiMessageSquare, FiShare2, FiPlus, FiUser } from 'react-icons/fi';
+import { useAuth } from '../context/AuthContext';
+import { FiHeart, FiMessageSquare, FiShare2, FiPlus, FiUser, FiSettings, FiMoon, FiSun, FiLogOut } from 'react-icons/fi';
 import assets from '../assets/assets.js';
 import CreatePost from './CreatePost';
-import { useAuth } from '../context/AuthContext';
+import { useRef } from 'react';
 const mockPosts = [
   {
     id: 1,
@@ -77,12 +78,51 @@ const featuredCreators = [
 ];
 
 function Home() {
+  const { user, isAuthenticated, isLoading: authLoading, logout } = useAuth();
+  const navigate = useNavigate();
   const [posts, setPosts] = useState(mockPosts);
   const [isCreatePostOpen, setIsCreatePostOpen] = useState(false);
-  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [userProfile, setUserProfile] = useState(null);
-  const navigate = useNavigate();
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
+  const settingsRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (settingsRef.current && !settingsRef.current.contains(event.target)) {
+        setIsSettingsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const toggleDarkMode = () => {
+    setDarkMode(!darkMode);
+    // Toggle dark mode class on document element
+    if (darkMode) {
+      document.documentElement.classList.remove('dark');
+    } else {
+      document.documentElement.classList.add('dark');
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      // Call the logout function from AuthContext
+      await logout();
+      // Navigate to login page after successful logout
+      navigate('/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Still navigate to login even if there's an error
+      navigate('/login');
+    }
+  };
   
   // Set user profile from auth context if available
   useEffect(() => {
@@ -113,7 +153,7 @@ function Home() {
   };
 
   const handleCreatePost = () => {
-    navigate("/CreatePost");
+    navigate("/create-post");
   };
 
   if (authLoading || isLoading) {
@@ -132,6 +172,46 @@ function Home() {
       </video>
       <div className="fixed inset-0 bg-gradient-to-br from-gray-900/90 via-gray-900/70 to-gray-900/90"></div>
       
+      {/* Settings Button */}
+      <div className="fixed top-4 right-4 z-50" ref={settingsRef}>
+        <button
+          onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+          className="p-2 rounded-full bg-gray-800/80 backdrop-blur-md text-white hover:bg-gray-700/90 transition-colors duration-200 shadow-lg"
+          aria-label="Settings"
+        >
+          <FiSettings className="w-6 h-6" />
+        </button>
+        
+        {/* Dropdown Menu */}
+        {isSettingsOpen && (
+          <div className="absolute right-0 mt-2 w-56 bg-gray-800/90 backdrop-blur-md rounded-lg shadow-xl border border-gray-700 overflow-hidden">
+            <button
+              onClick={toggleDarkMode}
+              className="w-full px-4 py-3 text-left text-gray-200 hover:bg-gray-700/80 transition-colors duration-200 flex items-center"
+            >
+              {darkMode ? (
+                <>
+                  <FiSun className="w-5 h-5 mr-3" />
+                  <span>Light Mode</span>
+                </>
+              ) : (
+                <>
+                  <FiMoon className="w-5 h-5 mr-3" />
+                  <span>Dark Mode</span>
+                </>
+              )}
+            </button>
+            <button
+              onClick={handleLogout}
+              className="w-full px-4 py-3 text-left text-red-400 hover:bg-gray-700/80 transition-colors duration-200 flex items-center"
+            >
+              <FiLogOut className="w-5 h-5 mr-3" />
+              <span>Log Out</span>
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* Main Content */}
       <div className="relative z-10 pt-24 pb-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         {/* User Profile Section */}

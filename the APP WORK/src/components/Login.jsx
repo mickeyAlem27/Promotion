@@ -19,7 +19,10 @@ function Login() {
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/home');
+      // Get the redirect URL from query parameters or default to '/home'
+      const searchParams = new URLSearchParams(window.location.search);
+      const redirectTo = searchParams.get('redirect') || '/home';
+      navigate(redirectTo);
     }
   }, [isAuthenticated, navigate]);
 
