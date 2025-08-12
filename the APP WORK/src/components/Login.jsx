@@ -50,11 +50,21 @@ function Login() {
       return;
     }
 
-    const result = await login(email, password);
-    if (result.success) {
-      navigate('/home');
-    } else {
-      setError(result.message || 'Login failed. Please try again.');
+    try {
+      setError('Connecting to server...');
+      const result = await login(email, password);
+      if (result && result.success) {
+        // Navigation is handled by the useEffect that watches isAuthenticated
+      } else {
+        setError(result?.message || 'Login failed. Please check your credentials and try again.');
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      if (err.message.includes('Network Error') || err.message.includes('ECONNREFUSED')) {
+        setError('Cannot connect to the server. Please make sure the backend server is running.');
+      } else {
+        setError(err.message || 'An error occurred during login');
+      }
     }
   };
 

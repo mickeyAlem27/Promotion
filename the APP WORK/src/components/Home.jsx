@@ -324,7 +324,7 @@ function Home() {
                   <video 
                     controls 
                     className="w-full rounded-lg max-h-96"
-                    poster="https://via.placeholder.com/800x450?text=Video+Thumbnail"
+                    poster="https://placehold.co/800x450/1f2937/ffffff?text=Video+Thumbnail"
                   >
                     <source src={post.content.url} type="video/mp4" />
                   </video>

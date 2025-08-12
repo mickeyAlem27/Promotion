@@ -9,6 +9,7 @@ import Profile from './components/Profile';
 import CreatePost from './components/CreatePost';
 import Biography from './components/Biography';
 import Password from './components/Password';
+import Messages from './components/Messages';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -85,12 +86,17 @@ function App() {
               <Profile />
             </ProtectedRoute>
           } />
+          <Route path="/messages" element={
+            <ProtectedRoute>
+              <Messages />
+            </ProtectedRoute>
+          } />
           <Route path="/create-post" element={
             <ProtectedRoute>
               <CreatePost />
             </ProtectedRoute>
           } />
-          <Route path="/biography" element={
+          <Route path="/biography/:userId" element={
             <ProtectedRoute>
               <Biography />
             </ProtectedRoute>
