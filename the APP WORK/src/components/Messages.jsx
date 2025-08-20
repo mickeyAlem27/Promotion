@@ -114,9 +114,56 @@ const Messages = () => {
     });
   }, [users, searchTerm]);
 
+  // State for messages and conversation
+  const [messages, setMessages] = useState([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [messageError, setMessageError] = useState(null);
+
   // Handle user selection
-  const handleUserSelect = (user) => {
+  const handleUserSelect = async (user) => {
     setSelectedUser(user);
+    await fetchConversationMessages(user._id);
+  };
+
+  // Fetch conversation messages
+  const fetchConversationMessages = async (userId) => {
+    if (!userId || !currentUser?._id) return;
+    
+    setLoadingMessages(true);
+    setMessageError(null);
+    
+    try {
+      // In a real app, you would fetch messages from your API
+      // Example: const response = await api.get(`/api/messages/conversation/${conversationId}`);
+      // setMessages(response.data.messages);
+      
+      // For demo purposes, we'll use mock messages
+      const mockMessages = [
+        {
+          _id: '1',
+          content: `Hi there! This is a sample conversation with ${selectedUser?.firstName || 'User'}`,
+          sender: selectedUser?._id,
+          recipient: currentUser?._id,
+          createdAt: new Date(),
+          isRead: true
+        },
+        {
+          _id: '2',
+          content: 'Hello! Thanks for reaching out. How can I help you today?',
+          sender: currentUser?._id,
+          recipient: selectedUser?._id,
+          createdAt: new Date(),
+          isRead: true
+        }
+      ];
+      
+      setMessages(mockMessages);
+    } catch (err) {
+      console.error('Error fetching messages:', err);
+      setMessageError('Failed to load messages. Please try again.');
+    } finally {
+      setLoadingMessages(false);
+    }
   };
 
   // Handle sending a message
@@ -150,7 +197,7 @@ const Messages = () => {
           {/* Current User Profile */}
           <div className="mt-4 flex items-center space-x-3 p-3 bg-gray-800/50 rounded-lg">
             <div className="relative">
-              <img 
+              <img
                 src={userProfile?.photo || 'https://randomuser.me/api/portraits/lego/1.jpg'}
                 alt={userProfile?.name || 'User'}
                 className="w-12 h-12 rounded-full object-cover border-2 border-blue-500"
@@ -257,78 +304,154 @@ const Messages = () => {
         </div>
       </div>
 
-      {/* Right side - Message thread */}
-      <div className="hidden md:flex flex-col flex-1 bg-gray-800/30">
-        {selectedUser ? (
-          <>
-            {/* Current User Info - Mobile */}
-            <div className="md:hidden bg-gray-800 p-4 border-b border-gray-700">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className="relative">
-                    <img
-                      src={userProfile?.photo || 'https://randomuser.me/api/portraits/lego/1.jpg'}
-                      alt="Profile"
-                      className="w-10 h-10 rounded-full object-cover border-2 border-blue-500"
-                      onError={(e) => {
-                        e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userProfile?.name || 'User')}&background=1f2937&color=fff`;
-                      }}
-                    />
-                    <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-gray-800"></span>
+      {/* Right side - Message thread and user preview */}
+      <div className="hidden md:flex flex-1 bg-gray-800/30">
+        {/* Message thread */}
+        <div className="flex-1 flex flex-col">
+          {selectedUser ? (
+            <>
+              {/* Messages area */}
+              <div className="flex-1 p-4 overflow-y-auto">
+                {loadingMessages ? (
+                  <div className="flex justify-center items-center h-full">
+                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
                   </div>
-                  <div>
-                    <p className="font-medium text-white">
-                      {userProfile?.name || 'User'}
-                    </p>
-                    <p className="text-xs text-gray-400">{userProfile?.role || 'Member'}</p>
+                ) : messageError ? (
+                  <div className="flex flex-col items-center justify-center h-full text-red-400 text-center p-4">
+                    <p>{messageError}</p>
+                    <button 
+                      onClick={() => fetchConversationMessages(selectedUser?._id)}
+                      className="mt-2 px-4 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm"
+                    >
+                      Retry
+                    </button>
                   </div>
-                </div>
-                <button 
-                  onClick={() => setShowSidebar(!showSidebar)}
-                  className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700"
-                >
-                  <FiMessageSquare className="w-5 h-5" />
-                </button>
+                ) : messages.length > 0 ? (
+                  <div className="space-y-4">
+                    {messages.map((msg) => (
+                      <div 
+                        key={msg._id}
+                        className={`flex ${msg.sender === currentUser?._id ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <div 
+                          className={`max-w-xs md:max-w-md lg:max-w-lg xl:max-w-xl rounded-lg p-3 ${
+                            msg.sender === currentUser?._id 
+                              ? 'bg-blue-600 text-white rounded-br-none' 
+                              : 'bg-gray-700 text-gray-100 rounded-bl-none'
+                          }`}
+                        >
+                          <p className="text-sm">{msg.content}</p>
+                          <p className="text-xs mt-1 opacity-70 text-right">
+                            {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-gray-500 text-center p-4">
+                    <FiMessageSquare size={48} className="mb-4 opacity-20" />
+                    <h3 className="text-lg font-medium mb-1">No messages yet</h3>
+                    <p className="text-sm">Send a message to start the conversation</p>
+                  </div>
+                )}
               </div>
-            </div>
-            
-            {/* Messages area */}
-            <div className="flex-1 p-4 overflow-y-auto">
-              <div className="flex justify-center items-center h-full text-gray-500 text-sm">
-                Select a conversation to start messaging
+              
+              {/* Single message input */}
+              <div className="p-4 border-t border-gray-700">
+                <form onSubmit={handleSendMessage} className="flex items-center space-x-2">
+                  <input
+                    type="text"
+                    placeholder={`Message ${selectedUser.firstName}...`}
+                    className="flex-1 bg-gray-700/50 text-white px-4 py-2 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                  />
+                  <button 
+                    type="submit"
+                    className="p-2 text-blue-400 hover:text-blue-300"
+                    disabled={!message.trim()}
+                  >
+                    <FiSend size={20} />
+                  </button>
+                </form>
               </div>
+            </>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-gray-500 p-4 text-center">
+              <FiMessageSquare size={48} className="mb-4 opacity-20" />
+              <h2 className="text-xl font-medium mb-2">No conversation selected</h2>
+              <p className="max-w-md">
+                Select a conversation from the list or search for someone to start chatting.
+              </p>
             </div>
-            
-            {/* Message input */}
-            <div className="p-4 border-t border-gray-700">
-              <form onSubmit={handleSendMessage} className="flex items-center space-x-2">
-                <input
-                  type="text"
-                  placeholder={`Message ${selectedUser.firstName}...`}
-                  className="flex-1 bg-gray-700/50 text-white px-4 py-2 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
+          )}
+        </div>
+        
+        {/* User Profile Preview - Right Sidebar */}
+      {selectedUser && (
+        <div className="w-80 bg-gray-800/50 border-l border-gray-700 overflow-y-auto">
+          <div className="p-6">
+            <div className="flex flex-col items-center">
+              <div className="relative mb-4">
+                <img 
+                  src={selectedUser.photo} 
+                  alt={`${selectedUser.firstName} ${selectedUser.lastName}`}
+                  className="w-32 h-32 rounded-full object-cover border-4 border-blue-500"
+                  onError={(e) => {
+                    e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedUser.firstName + ' ' + selectedUser.lastName)}&background=1f2937&color=fff`;
+                  }}
                 />
-                <button 
-                  type="submit"
-                  className="p-2 text-blue-400 hover:text-blue-300"
-                  disabled={!message.trim()}
-                >
-                  <FiSend size={20} />
-                </button>
-              </form>
+                <span className={`absolute bottom-2 right-2 w-4 h-4 rounded-full border-2 border-gray-900 ${
+                  selectedUser.online ? 'bg-green-500' : 'bg-gray-500'
+                }`}></span>
+              </div>
+              
+              <h2 className="text-xl font-bold text-white text-center">
+                {selectedUser.firstName} {selectedUser.lastName}
+              </h2>
+              <p className="text-blue-400 mb-2">{selectedUser.role}</p>
+              
+              <div className="w-full mt-6 space-y-4">
+                <div>
+                  <h3 className="text-sm font-medium text-gray-400 mb-1">Bio</h3>
+                  <p className="text-white text-sm">
+                    {selectedUser.bio || 'No bio available'}
+                  </p>
+                </div>
+                
+                {selectedUser.skills?.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-400 mb-2">Skills</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedUser.skills.map((skill, index) => (
+                        <span 
+                          key={index}
+                          className="px-3 py-1 bg-gray-700 text-xs rounded-full text-white"
+                        >
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                <div className="pt-4 border-t border-gray-700">
+                  <button
+                    className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
+                    onClick={() => {
+                      // Handle view full profile action
+                      console.log('View full profile:', selectedUser._id);
+                    }}
+                  >
+                    View Full Profile
+                  </button>
+                </div>
+              </div>
             </div>
-          </>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full text-gray-500 p-4 text-center">
-            <FiMessageSquare size={48} className="mb-4 opacity-20" />
-            <h2 className="text-xl font-medium mb-2">No conversation selected</h2>
-            <p className="max-w-md">
-              Select a conversation from the list or search for someone to start chatting.
-            </p>
           </div>
-        )}
-      </div>
+        </div>
+      )}
       
       {/* Mobile view - Show either list or thread */}
       {selectedUser ? (
@@ -349,9 +472,49 @@ const Messages = () => {
           </div>
           
           <div className="flex-1 p-4 overflow-y-auto">
-            <div className="flex justify-center items-center h-full text-gray-500 text-sm">
-              Start a new conversation with {selectedUser.firstName}
-            </div>
+            {loadingMessages ? (
+              <div className="flex justify-center items-center h-full">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+              </div>
+            ) : messageError ? (
+              <div className="flex flex-col items-center justify-center h-full text-red-400 text-center p-4">
+                <p>{messageError}</p>
+                <button 
+                  onClick={() => fetchConversationMessages(selectedUser?._id)}
+                  className="mt-2 px-4 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : messages.length > 0 ? (
+              <div className="space-y-4">
+                {messages.map((msg) => (
+                  <div 
+                    key={msg._id}
+                    className={`flex ${msg.sender === currentUser?._id ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div 
+                      className={`max-w-xs rounded-lg p-3 ${
+                        msg.sender === currentUser?._id 
+                          ? 'bg-blue-600 text-white rounded-br-none' 
+                          : 'bg-gray-700 text-gray-100 rounded-bl-none'
+                      }`}
+                    >
+                      <p className="text-sm">{msg.content}</p>
+                      <p className="text-xs mt-1 opacity-70 text-right">
+                        {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-gray-500 text-center p-4">
+                <FiMessageSquare size={48} className="mb-4 opacity-20" />
+                <h3 className="text-lg font-medium mb-1">No messages yet</h3>
+                <p className="text-sm">Send a message to start the conversation</p>
+              </div>
+            )}
           </div>
           
           <div className="p-4 border-t border-gray-700">
@@ -373,7 +536,16 @@ const Messages = () => {
             </form>
           </div>
         </div>
-      ) : null}
+      ) : (
+        <div className="hidden md:flex flex-1 items-center justify-center bg-gray-800/30">
+          <div className="text-center p-6 max-w-md">
+            <FiMessageSquare size={48} className="mx-auto mb-4 text-gray-500" />
+            <h2 className="text-xl font-medium text-gray-300 mb-2">No conversation selected</h2>
+            <p className="text-gray-400">Select a conversation from the list to start messaging</p>
+          </div>
+        </div>
+      )}
+    </div>
     </div>
   );
 };
