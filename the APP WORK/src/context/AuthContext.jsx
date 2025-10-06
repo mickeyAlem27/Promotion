@@ -40,14 +40,18 @@ export const AuthProvider = ({ children }) => {
     
     try {
       const response = await authAPI.login({ email, password });
-      if (response.data.token) {
-        localStorage.setItem('token', response.data.token);
+      console.log('Login response structure:', response);
+
+      if (response.token) {
+        localStorage.setItem('token', response.token);
+        console.log('Token stored in localStorage');
+
         const userResponse = await authAPI.getMe();
         setUser(userResponse.data);
         setIsAuthenticated(true);
         return { success: true };
       }
-      return { success: false, message: 'Login failed' };
+      return { success: false, message: 'Login failed - no token received' };
     } catch (error) {
       console.error('Login error:', error);
       const message = error.message || 'Login failed. Please check your credentials.';

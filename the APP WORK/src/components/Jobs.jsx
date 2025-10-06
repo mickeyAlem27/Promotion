@@ -1,93 +1,97 @@
 import React, { useState, useEffect } from 'react';
-import { FiMapPin, FiClock, FiDollarSign, FiUsers, FiSearch, FiFilter, FiBriefcase, FiPlus, FiX } from 'react-icons/fi';
+import { useNavigate } from 'react-router-dom';
+import { FiMapPin, FiClock, FiDollarSign, FiUsers, FiPlus, FiBriefcase } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import { jobsAPI } from '../services/api';
 
 const Jobs = () => {
   const { isAuthenticated, user } = useAuth();
+  const navigate = useNavigate();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
-  const [showPostJobModal, setShowPostJobModal] = useState(false);
-  const [postingJob, setPostingJob] = useState(false);
-  const [jobForm, setJobForm] = useState({
-    title: '',
-    description: '',
-    company: '',
-    location: '',
-    employmentType: 'full-time',
-    salaryMin: '',
-    salaryMax: '',
-    skills: []
-  });
 
   useEffect(() => {
     fetchJobs();
+  }, []);
+
+  // Also fetch jobs when component becomes visible (user navigates back)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchJobs();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
 
   const fetchJobs = async () => {
     try {
       setLoading(true);
       setError(null);
+      console.log('🔄 Fetching jobs from API...');
+
       const response = await jobsAPI.getJobs();
-      setJobs(response.data || []);
+      console.log('📋 Raw API response:', response);
+
+      // Handle different response formats
+      let jobsData = [];
+      if (response.data) {
+        jobsData = Array.isArray(response.data) ? response.data : response.data.data || [];
+      } else if (Array.isArray(response)) {
+        jobsData = response;
+      }
+
+      console.log('📋 Processed jobs data:', jobsData);
+      console.log('📋 Number of jobs:', jobsData.length);
+
+      setJobs(jobsData);
+      console.log('✅ Jobs loaded successfully:', jobsData.length);
+
     } catch (err) {
-      console.error('Error fetching jobs:', err);
-      setError('Failed to load jobs. Please try again later.');
+      console.error('❌ Error fetching jobs:', err);
+      console.error('❌ Error details:', {
+        message: err.message,
+        response: err.response,
+        status: err.response?.status,
+        data: err.response?.data
+      });
+
+      let errorMessage = 'Failed to load jobs. Please try again later.';
+      if (err.response?.status === 404) {
+        errorMessage = 'Jobs endpoint not found. Please check if the server is running.';
+      } else if (err.response?.status === 500) {
+        errorMessage = 'Server error. Please check if the backend server is running properly.';
+      } else if (err.code === 'ERR_NETWORK') {
+        errorMessage = 'Cannot connect to server. Please check if the backend server is running on port 5000.';
+      }
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  const handlePostJob = async (e) => {
-    e.preventDefault();
-    try {
-      setPostingJob(true);
-      await jobsAPI.createJob({
-        title: jobForm.title.trim(),
-        description: jobForm.description.trim(),
-        company: jobForm.company.trim(),
-        location: jobForm.location.trim(),
-        employmentType: jobForm.employmentType,
-        salaryMin: jobForm.salaryMin ? parseInt(jobForm.salaryMin) : null,
-        salaryMax: jobForm.salaryMax ? parseInt(jobForm.salaryMax) : null,
-        skills: jobForm.skills.filter(skill => skill.trim() !== '')
-      });
-
-      setShowPostJobModal(false);
-      setJobForm({
-        title: '',
-        description: '',
-        company: '',
-        location: '',
-        employmentType: 'full-time',
-        salaryMin: '',
-        salaryMax: '',
-        skills: []
-      });
-      fetchJobs(); // Refresh the jobs list
-    } catch (err) {
-      console.error('Error posting job:', err);
-      setError('Failed to post job. Please try again.');
-    } finally {
-      setPostingJob(false);
-    }
-  };
-
-  const handleSkillsChange = (e) => {
-    const skills = e.target.value.split(',').map(skill => skill.trim());
-    setJobForm(prev => ({ ...prev, skills }));
-  };
-
-  const isPromoterOrBrand = user?.role === 'promoter' || user?.role === 'brand';
+  const isPromoter = user?.role === 'promoter';
+  const isBrand = user?.role === 'brand';
+  const canPostJobs = isPromoter;
 
   const filteredJobs = jobs.filter(job => {
-    const matchesSearch = job.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         job.company?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         job.description?.toLowerCase().includes(searchTerm.toLowerCase());
+    // If no search term and no filter, show all jobs
+    if (!searchTerm && filterType === 'all') {
+      return true;
+    }
+
+    const matchesSearch = !searchTerm || (
+      job.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      job.company?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      job.description?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
     const matchesType = filterType === 'all' || job.employmentType === filterType;
 
@@ -128,20 +132,22 @@ const Jobs = () => {
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 py-16">
+      <div className="bg-gradient-to-r from-blue-600 to-purple-600 py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">Job Opportunities</h1>
-            <p className="text-xl text-gray-200 max-w-3xl mx-auto">
-              Discover exciting opportunities posted by promoters and brands in the promotion industry
-            </p>
-            {isPromoterOrBrand && (
+          <div className="flex flex-col sm:flex-row items-center justify-between">
+            <div>
+              <h1 className="text-3xl md:text-4xl font-bold mb-2">Job Opportunities</h1>
+              <p className="text-lg text-gray-200">
+                Discover exciting opportunities in the promotion industry
+              </p>
+            </div>
+            {canPostJobs && (
               <button
-                onClick={() => setShowPostJobModal(true)}
-                className="mt-6 inline-flex items-center gap-2 bg-white text-blue-600 px-6 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors"
+                onClick={() => navigate('/create-job')}
+                className="mt-4 sm:mt-0 inline-flex items-center gap-2 bg-white text-blue-600 px-6 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors"
               >
                 <FiPlus />
-                Post a Job
+                Post New Job
               </button>
             )}
           </div>
@@ -149,99 +155,10 @@ const Jobs = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Search and Filters */}
-        <div className="mb-8">
-          <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-            {/* Search */}
-            <div className="relative flex-1 max-w-md">
-              <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search jobs, companies, or skills..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-gray-800 text-white pl-10 pr-4 py-3 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-
-            {/* Filter Toggle */}
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center gap-2 px-4 py-3 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
-            >
-              <FiFilter />
-              Filters
-            </button>
-          </div>
-
-          {/* Filters Panel */}
-          {showFilters && (
-            <div className="mt-4 p-4 bg-gray-800 rounded-lg">
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => setFilterType('all')}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                    filterType === 'all'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                  }`}
-                >
-                  All Types
-                </button>
-                {['full-time', 'part-time', 'contract', 'internship', 'temporary'].map(type => (
-                  <button
-                    key={type}
-                    onClick={() => setFilterType(type)}
-                    className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                      filterType === type
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    }`}
-                  >
-                    {type.charAt(0).toUpperCase() + type.slice(1).replace('-', ' ')}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Loading State */}
-        {loading && (
-          <div className="flex justify-center items-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-          </div>
-        )}
-
-        {/* Error State */}
-        {error && (
-          <div className="text-center py-12">
-            <p className="text-red-400 mb-4">{error}</p>
-            <button
-              onClick={fetchJobs}
-              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-            >
-              Try Again
-            </button>
-          </div>
-        )}
-
         {/* Jobs Grid */}
-        {!loading && !error && (
+        {!loading && !error && jobs.length > 0 && (
           <>
-            {filteredJobs.length === 0 ? (
-              <div className="text-center py-12">
-                <FiBriefcase size={64} className="mx-auto mb-4 text-gray-600" />
-                <h3 className="text-xl font-medium mb-2">No jobs found</h3>
-                <p className="text-gray-400">
-                  {searchTerm || filterType !== 'all'
-                    ? 'Try adjusting your search or filters'
-                    : isPromoterOrBrand
-                      ? 'No job opportunities available yet. Be the first to post one!'
-                      : 'No job opportunities available at the moment'}
-                </p>
-              </div>
-            ) : (
+            {filteredJobs.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredJobs.map((job) => (
                   <div key={job._id} className="bg-gray-800 rounded-xl p-6 hover:bg-gray-750 transition-colors border border-gray-700">
@@ -325,156 +242,40 @@ const Jobs = () => {
                   </div>
                 ))}
               </div>
-            )}
+            ) : null}
           </>
         )}
 
-        {/* Stats */}
-        {!loading && !error && (
-          <div className="mt-12 text-center">
+        {/* Loading State */}
+        {loading && (
+          <div className="flex justify-center items-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          </div>
+        )}
+
+        {/* Error State */}
+        {error && (
+          <div className="text-center py-12">
+            <p className="text-red-400 mb-4">{error}</p>
+            <button
+              onClick={fetchJobs}
+              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
+        )}
+        {/* Empty State */}
+        {!loading && !error && jobs.length === 0 && (
+          <div className="text-center py-12">
+            <FiBriefcase size={64} className="mx-auto mb-4 text-gray-600" />
+            <h3 className="text-xl font-medium mb-2">No jobs found</h3>
             <p className="text-gray-400">
-              Showing {filteredJobs.length} of {jobs.length} job opportunities
+              No job opportunities available at the moment
             </p>
           </div>
         )}
       </div>
-
-      {/* Post Job Modal */}
-      {showPostJobModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-800 rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold text-white">Post a Job</h2>
-                <button
-                  onClick={() => setShowPostJobModal(false)}
-                  className="text-gray-400 hover:text-white"
-                >
-                  <FiX size={24} />
-                </button>
-              </div>
-
-              <form onSubmit={handlePostJob} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Job Title *</label>
-                  <input
-                    type="text"
-                    required
-                    value={jobForm.title}
-                    onChange={(e) => setJobForm(prev => ({ ...prev, title: e.target.value }))}
-                    className="w-full bg-gray-700 text-white px-4 py-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g. Social Media Manager"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Company</label>
-                  <input
-                    type="text"
-                    value={jobForm.company}
-                    onChange={(e) => setJobForm(prev => ({ ...prev, company: e.target.value }))}
-                    className="w-full bg-gray-700 text-white px-4 py-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Company name (optional)"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Location</label>
-                    <input
-                      type="text"
-                      value={jobForm.location}
-                      onChange={(e) => setJobForm(prev => ({ ...prev, location: e.target.value }))}
-                      className="w-full bg-gray-700 text-white px-4 py-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="City, State"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Employment Type</label>
-                    <select
-                      value={jobForm.employmentType}
-                      onChange={(e) => setJobForm(prev => ({ ...prev, employmentType: e.target.value }))}
-                      className="w-full bg-gray-700 text-white px-4 py-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="full-time">Full-time</option>
-                      <option value="part-time">Part-time</option>
-                      <option value="contract">Contract</option>
-                      <option value="internship">Internship</option>
-                      <option value="temporary">Temporary</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Minimum Salary ($)</label>
-                    <input
-                      type="number"
-                      value={jobForm.salaryMin}
-                      onChange={(e) => setJobForm(prev => ({ ...prev, salaryMin: e.target.value }))}
-                      className="w-full bg-gray-700 text-white px-4 py-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="50000"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Maximum Salary ($)</label>
-                    <input
-                      type="number"
-                      value={jobForm.salaryMax}
-                      onChange={(e) => setJobForm(prev => ({ ...prev, salaryMax: e.target.value }))}
-                      className="w-full bg-gray-700 text-white px-4 py-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="80000"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Skills Required (comma-separated)</label>
-                  <input
-                    type="text"
-                    value={jobForm.skills.join(', ')}
-                    onChange={handleSkillsChange}
-                    className="w-full bg-gray-700 text-white px-4 py-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Social Media, Marketing, Photoshop, etc."
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Job Description *</label>
-                  <textarea
-                    required
-                    rows={4}
-                    value={jobForm.description}
-                    onChange={(e) => setJobForm(prev => ({ ...prev, description: e.target.value }))}
-                    className="w-full bg-gray-700 text-white px-4 py-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Describe the job responsibilities, requirements, and what you're looking for..."
-                  />
-                </div>
-
-                <div className="flex gap-4 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowPostJobModal(false)}
-                    className="flex-1 px-6 py-3 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={postingJob}
-                    className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-colors disabled:opacity-50"
-                  >
-                    {postingJob ? 'Posting...' : 'Post Job'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -10,6 +10,9 @@ import CreatePost from './components/CreatePost';
 import Biography from './components/Biography';
 import Password from './components/Password';
 import Messages from './components/Messages';
+import MyJobs from './components/MyJobs';
+import CreateJob from './components/CreateJob';
+import Jobs from './components/Jobs';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -94,6 +97,21 @@ function App() {
           <Route path="/create-post" element={
             <ProtectedRoute>
               <CreatePost />
+            </ProtectedRoute>
+          } />
+          <Route path="/create-job" element={
+            <ProtectedRoute>
+              <CreateJob />
+            </ProtectedRoute>
+          } />
+          <Route path="/jobs" element={
+            <ProtectedRoute>
+              <Jobs />
+            </ProtectedRoute>
+          } />
+          <Route path="/my-jobs" element={
+            <ProtectedRoute>
+              <MyJobs />
             </ProtectedRoute>
           } />
           <Route path="/biography/:userId" element={

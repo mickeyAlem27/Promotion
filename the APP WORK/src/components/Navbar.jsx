@@ -20,10 +20,16 @@ function Navbar() {
   }, []);
 
   const navLinks = [
-    { name: 'Home', path: '/home', icon: <FiHome className="mr-2" /> },
-    { name: 'Jobs', path: '/jobs', icon: <FiBriefcase className="mr-2" /> },
-    { name: 'Messages', path: '/messages', icon: <FiMessageSquare className="mr-2" /> },
+    { name: 'Home', path: '/home', icon: <FiHome className="mr-2" />, roles: ['user', 'admin', 'promoter', 'brand'] },
+    { name: 'Jobs', path: '/jobs', icon: <FiBriefcase className="mr-2" />, roles: ['user', 'admin', 'promoter', 'brand'] },
+    { name: 'My Jobs', path: '/my-jobs', icon: <FiBriefcase className="mr-2" />, roles: ['promoter', 'brand'] },
+    { name: 'Messages', path: '/messages', icon: <FiMessageSquare className="mr-2" />, roles: ['user', 'admin', 'promoter', 'brand'] },
   ];
+
+  const promoterBrandLinks = [];
+
+  const isPromoter = user?.role === 'promoter';
+  const isBrand = user?.role === 'brand';
   
   const handleLogout = () => {
     logout();
@@ -46,51 +52,61 @@ function Navbar() {
 
             {/* Desktop Navigation */}
             <div className="hidden md:flex items-center space-x-6">
-              {!isAuthPage && isAuthenticated && navLinks.map((link, index) => (
-                <Link
-                  key={link.path}
-                  to={link.path}
-                  className={`flex items-center px-4 py-2 text-sm font-medium animate-slide-in transition-all duration-300 hover:text-cyan-400 hover:underline hover:underline-offset-8 ${
-                    isActive(link.path) ? 'text-cyan-400 underline underline-offset-8 animate-pulse-slow' : 'text-gray-200'
-                  }`}
-                  style={{ animationDelay: `${index * 0.1}s` }}
-                >
-                  {link.icon}
-                  {link.name}
-                </Link>
-              ))}
-              {!isAuthPage ? (
+              {!isAuthPage && isAuthenticated && navLinks.map((link, index) => {
+                const hasAccess = !link.roles || link.roles.includes(user?.role);
+                if (!hasAccess) return null;
+
+                return (
+                  <Link
+                    key={link.path}
+                    to={link.path}
+                    className={`flex items-center px-4 py-2 text-sm font-medium animate-slide-in transition-all duration-300 hover:text-cyan-400 hover:underline hover:underline-offset-8 ${
+                      isActive(link.path) ? 'text-cyan-400 underline underline-offset-8 animate-pulse-slow' : 'text-gray-200'
+                    }`}
+                    style={{ animationDelay: `${index * 0.1}s` }}
+                  >
+                    {link.icon}
+                    {link.name}
+                  </Link>
+                );
+              })}
+
+              {/* Promoter/Brand specific links */}
+              {!isAuthPage && isAuthenticated && (isPromoter || isBrand) && promoterBrandLinks.length > 0 && (
                 <>
-                  <Link
-                    to="/login"
-                    className={`px-4 py-2 text-sm font-medium rounded-full transition-all duration-300 ${location.pathname === '/login' ? 'gradient-btn text-white' : 'text-gray-200 hover:gradient-text hover:bg-gray-800'}`}
-                  >
-                    Sign In
-                  </Link>
-                  <Link
-                    to="/signup"
-                    className="gradient-btn px-4 py-2 text-sm font-medium rounded-full hover:shadow-lg hover:shadow-cyan-500/30"
-                  >
-                    Get Started
-                  </Link>
+                  {promoterBrandLinks.slice(isPromoter ? 0 : 1).map((link, index) => {
+                    if (link.action === 'post') {
+                      return (
+                        <button
+                          key="post-job"
+                          onClick={() => navigate('/create-job')}
+                          className="flex items-center px-4 py-2 text-sm font-medium animate-slide-in transition-all duration-300 text-green-400 hover:text-green-300 hover:underline hover:underline-offset-8"
+                          style={{ animationDelay: `${navLinks.length * 0.1}s` }}
+                        >
+                          <FiBriefcase className="mr-2" />
+                          Post Job
+                        </button>
+                      );
+                    }
+
+                    const hasAccess = !link.roles || link.roles.includes(user?.role);
+                    if (!hasAccess) return null;
+
+                    return (
+                      <Link
+                        key={link.path}
+                        to={link.path}
+                        className={`flex items-center px-4 py-2 text-sm font-medium animate-slide-in transition-all duration-300 hover:text-cyan-400 hover:underline hover:underline-offset-8 ${
+                          isActive(link.path) ? 'text-cyan-400 underline underline-offset-8 animate-pulse-slow' : 'text-gray-200'
+                        }`}
+                        style={{ animationDelay: `${(navLinks.length + index) * 0.1}s` }}
+                      >
+                        {link.icon}
+                        {link.name}
+                      </Link>
+                    );
+                  })}
                 </>
-              ) : (
-                !isAuthPage && (
-                  <div className="flex space-x-4">
-                    <Link
-                      to="/login"
-                      className="px-4 py-2 text-sm font-medium text-white bg-cyan-600 rounded-md hover:bg-cyan-700 transition-colors"
-                    >
-                      Login
-                    </Link>
-                    <Link
-                      to="/signup"
-                      className="px-4 py-2 text-sm font-medium text-white bg-gray-700 rounded-md hover:bg-gray-600 transition-colors"
-                    >
-                      Sign Up
-                    </Link>
-                  </div>
-                )
               )}
             </div>
 
@@ -120,19 +136,65 @@ function Navbar() {
         {/* Mobile Menu */}
         <div className={`md:hidden bg-gray-900/95 glass transition-all duration-500 ${isOpen ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}`}>
           <div className="px-4 pt-4 pb-6 space-y-2">
-            {!isAuthPage && navLinks.map((link) => (
-              <Link
-                key={link.path}
-                to={link.path}
-                onClick={() => setIsOpen(false)}
-                className={`flex items-center px-4 py-3 text-base font-medium rounded-md transition-all duration-300 ${
-                  isActive(link.path) ? 'gradient-text bg-gray-800' : 'text-gray-200 hover:bg-gray-800 hover:gradient-text'
-                }`}
-              >
-                {link.icon}
-                {link.name}
-              </Link>
-            ))}
+            {!isAuthPage && navLinks.map((link) => {
+              const hasAccess = !link.roles || link.roles.includes(user?.role);
+              if (!hasAccess) return null;
+
+              return (
+                <Link
+                  key={link.path}
+                  to={link.path}
+                  onClick={() => setIsOpen(false)}
+                  className={`flex items-center px-4 py-3 text-base font-medium rounded-md transition-all duration-300 ${
+                    isActive(link.path) ? 'gradient-text bg-gray-800' : 'text-gray-200 hover:bg-gray-800 hover:gradient-text'
+                  }`}
+                >
+                  {link.icon}
+                  {link.name}
+                </Link>
+              );
+            })}
+
+            {/* Promoter/Brand specific mobile links */}
+            {!isAuthPage && isAuthenticated && (isPromoter || isBrand) && promoterBrandLinks.length > 0 && (
+              <>
+                {promoterBrandLinks.slice(isPromoter ? 0 : 1).map((link) => {
+                  if (link.action === 'post') {
+                    return (
+                      <button
+                        key="post-job-mobile"
+                        onClick={() => {
+                          navigate('/create-job');
+                          setIsOpen(false);
+                        }}
+                        className="flex items-center px-4 py-3 text-base font-medium rounded-md transition-all duration-300 text-green-400 hover:bg-gray-800 w-full text-left"
+                      >
+                        <FiBriefcase className="mr-2" />
+                        Post Job
+                      </button>
+                    );
+                  }
+
+                  const hasAccess = !link.roles || link.roles.includes(user?.role);
+                  if (!hasAccess) return null;
+
+                  return (
+                    <Link
+                      key={link.path}
+                      to={link.path}
+                      onClick={() => setIsOpen(false)}
+                      className={`flex items-center px-4 py-3 text-base font-medium rounded-md transition-all duration-300 ${
+                        isActive(link.path) ? 'gradient-text bg-gray-800' : 'text-gray-200 hover:bg-gray-800 hover:gradient-text'
+                      }`}
+                    >
+                      {link.icon}
+                      {link.name}
+                    </Link>
+                  );
+                })}
+              </>
+            )}
+
             {!isAuthPage ? (
               <>
                 <Link
