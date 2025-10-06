@@ -19,7 +19,7 @@ const mockPosts = [
   {
     id: 1,
     user: {
-      id: 'user1',
+      id: '507f1f77bcf86cd799439011', // Valid MongoDB ObjectId format
       name: 'John Doe',
       role: 'Promoter',
       avatar: 'https://randomuser.me/api/portraits/men/32.jpg',
@@ -39,7 +39,7 @@ const mockPosts = [
   {
     id: 2,
     user: {
-      id: 'user2',
+      id: '507f1f77bcf86cd799439012', // Valid MongoDB ObjectId format
       name: 'Jane Smith',
       avatar: 'https://randomuser.me/api/portraits/women/44.jpg',
       role: 'Content Creator',
@@ -59,7 +59,7 @@ const mockPosts = [
   {
     id: 3,
     user: {
-      id: 'user3',
+      id: '507f1f77bcf86cd799439013', // Valid MongoDB ObjectId format
       name: 'Alex Johnson',
       avatar: 'https://randomuser.me/api/portraits/men/67.jpg',
       role: 'Event Promoter',
@@ -79,12 +79,12 @@ const mockPosts = [
 ];
 
 const featuredCreators = [
-  { id: 4, name: 'Sarah Wilson', role: 'Influencer', avatar: 'https://randomuser.me/api/portraits/women/63.jpg' },
-  { id: 5, name: 'Mike Chen', role: 'Photographer', avatar: 'https://randomuser.me/api/portraits/men/75.jpg' },
-  { id: 6, name: 'Emma Davis', role: 'Marketer', avatar: 'https://randomuser.me/api/portraits/women/22.jpg' },
-  { id: 7, name: 'David Kim', role: 'Videographer', avatar: 'https://randomuser.me/api/portraits/men/45.jpg' },
-  { id: 8, name: 'Lisa Wong', role: 'Social Media', avatar: 'https://randomuser.me/api/portraits/women/18.jpg' },
-  { id: 9, name: 'James Wilson', role: 'Brand Manager', avatar: 'https://randomuser.me/api/portraits/men/29.jpg' },
+  { id: '507f1f77bcf86cd799439014', name: 'Sarah Wilson', role: 'Influencer', avatar: 'https://randomuser.me/api/portraits/women/63.jpg' },
+  { id: '507f1f77bcf86cd799439015', name: 'Mike Chen', role: 'Photographer', avatar: 'https://randomuser.me/api/portraits/men/75.jpg' },
+  { id: '507f1f77bcf86cd799439016', name: 'Emma Davis', role: 'Marketer', avatar: 'https://randomuser.me/api/portraits/women/22.jpg' },
+  { id: '507f1f77bcf86cd799439017', name: 'David Kim', role: 'Videographer', avatar: 'https://randomuser.me/api/portraits/men/45.jpg' },
+  { id: '507f1f77bcf86cd799439018', name: 'Lisa Wong', role: 'Social Media', avatar: 'https://randomuser.me/api/portraits/women/18.jpg' },
+  { id: '507f1f77bcf86cd799439019', name: 'James Wilson', role: 'Brand Manager', avatar: 'https://randomuser.me/api/portraits/men/29.jpg' },
 ];
 
 function Home() {
@@ -130,7 +130,7 @@ function Home() {
       const userData = user.data || user;
       const name = `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || 'User';
       setUserProfile({
-        id: userData.id || 'unknown',
+        id: userData._id || userData.id || 'current-user',
         avatar: userData.photo || 'https://randomuser.me/api/portraits/lego/1.jpg',
         bio: userData.bio || 'No bio available',
         skills: userData.skills || [],
@@ -160,6 +160,11 @@ function Home() {
   };
 
   const handleProfileClick = (userId) => {
+    if (!userId || userId === 'unknown') {
+      console.error('Invalid user ID for profile navigation:', userId);
+      return;
+    }
+    console.log('Navigating to profile:', userId);
     navigate(`/profile/${userId}`);
   };
 

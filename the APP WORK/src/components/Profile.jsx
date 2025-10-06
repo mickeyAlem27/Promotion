@@ -18,10 +18,49 @@ function Profile() {
   const [userProfile, setUserProfile] = useState(null);
   const [posts, setPosts] = useState([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
+  const [error, setError] = useState(null);
   const dropdownRef = useRef(null);
 
   // Check if this is the current user's profile
   const isCurrentUser = !userId || (authUser && (authUser._id === userId || authUser.id === userId));
+
+  // Handle invalid user IDs
+  if (userId === 'unknown' || (userId && !isCurrentUser && !authUser)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
+        <div className="text-center">
+          <div className="text-6xl mb-4">😕</div>
+          <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">Profile Not Available</h2>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">This user profile cannot be loaded.</p>
+          <button
+            onClick={() => navigate(-1)}
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+          >
+            Go Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
+  // Handle invalid user IDs
+  if (userId === 'unknown' || (userId && !isCurrentUser && !authUser)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
+        <div className="text-center">
+          <div className="text-6xl mb-4">😕</div>
+          <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">Profile Not Available</h2>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">This user profile cannot be loaded.</p>
+          <button
+            onClick={() => navigate(-1)}
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+          >
+            Go Back
+          </button>
+        </div>
+      </div>
+    );
+  }
   
   // Debug logs
   console.log('Profile Debug - Auth User:', authUser);
@@ -40,11 +79,41 @@ function Profile() {
         
         if (isCurrentUser && authUser) {
           // For current user, use auth context
-          userData = authUser.data || authUser;
-        } else if (userId) {
-          // For other users, fetch their profile
-          const response = await api.get(`/api/users/${userId}`);
-          userData = response.data;
+          console.log('Using auth user data for current user:', authUser);
+          userData = {
+            ...authUser,
+            firstName: authUser.firstName || 'User',
+            lastName: authUser.lastName || '',
+            email: authUser.email || 'Not provided',
+            role: authUser.role || 'user',
+            bio: authUser.bio || 'No bio available',
+            skills: Array.isArray(authUser.skills) ? authUser.skills : [],
+            photo: authUser.photo || 'https://randomuser.me/api/portraits/lego/1.jpg',
+            phone: authUser.phone || '',
+            location: authUser.location || '',
+            company: authUser.company || '',
+            jobTitle: authUser.jobTitle || '',
+            createdAt: authUser.createdAt || new Date().toISOString()
+          };
+        } else if (userId && userId !== 'unknown' && userId !== authUser?._id && userId !== authUser?.id) {
+          // For other users, fetch their profile from database
+          try {
+            console.log('Fetching user data for ID:', userId);
+            const response = await api.get(`/users/${userId}`);
+            userData = response.data;
+            console.log('Fetched user data:', userData);
+          } catch (error) {
+            console.error('Error fetching user profile:', error);
+            // For demo/test users, create mock profile data
+            if (userId.match(/^[0-9a-f]{24}$/)) {
+              // This looks like a MongoDB ObjectId but user doesn't exist in database
+              setError('User not found in database');
+              return;
+            } else {
+              setError('User not found');
+              return;
+            }
+          }
         } else if (location.state?.user) {
           // If user data was passed via location state
           userData = location.state.user;
@@ -194,6 +263,24 @@ function Profile() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
+        <div className="text-center">
+          <div className="text-6xl mb-4">😕</div>
+          <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">User Not Found</h2>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">{error}</p>
+          <button
+            onClick={() => navigate(-1)}
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+          >
+            Go Back
+          </button>
+        </div>
       </div>
     );
   }

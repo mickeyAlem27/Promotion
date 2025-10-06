@@ -55,30 +55,62 @@ const Messages = () => {
     try {
       setLoading(true);
       setError(null);
-      
-      // In a real app, you would fetch users from your API
-      // const response = await api.get('/users');
-      // const otherUsers = response.data.filter(user => user._id !== currentUser?._id);
-      // setUsers(otherUsers);
-      
-      // For now, use mock data
-      setUsers(mockUsers);
-      
-      // Select first user by default
-      if (mockUsers.length > 0) {
-        setSelectedUser(mockUsers[0]);
+
+      // Fetch real users from the API
+      const response = await api.get('/users');
+      console.log('Users API response:', response.data);
+
+      // Handle different response formats
+      let usersData = [];
+      if (response.data) {
+        usersData = Array.isArray(response.data) ? response.data : response.data.data || [];
+      }
+
+      // Filter out current user and add online status
+      const otherUsers = usersData
+        .filter(user => user._id !== currentUser?._id)
+        .filter(user => user._id && user._id !== 'unknown') // Filter out invalid IDs
+        .map(user => ({
+          ...user,
+          online: Math.random() > 0.5, // Random online status for demo
+          photo: user.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.firstName + ' ' + user.lastName)}&background=1f2937&color=fff`
+        }));
+
+      console.log('Processed users:', otherUsers.length);
+      console.log('User IDs:', otherUsers.map(u => u._id));
+      setUsers(otherUsers);
+
+      // Select first user by default if available
+      if (otherUsers.length > 0) {
+        setSelectedUser(otherUsers[0]);
+      } else {
+        // If no other users, show current user as the only option for testing
+        const currentUserForDisplay = {
+          _id: authUser?._id || authUser?.id,
+          firstName: authUser?.firstName || 'You',
+          lastName: authUser?.lastName || '',
+          role: authUser?.role || 'User',
+          photo: authUser?.photo || 'https://randomuser.me/api/portraits/lego/1.jpg',
+          bio: authUser?.bio || 'Your profile',
+          skills: Array.isArray(authUser?.skills) ? authUser.skills : [],
+          online: true
+        };
+        setUsers([currentUserForDisplay]);
+        setSelectedUser(currentUserForDisplay);
       }
     } catch (err) {
       console.error('Error fetching users:', err);
-      setError('Failed to load users. Using demo data.');
-      setUsers(mockUsers);
-      if (mockUsers.length > 0) {
-        setSelectedUser(mockUsers[0]);
+      setError('Failed to load users. Please try again later.');
+      // Fallback to mock data if API fails
+      const filteredMockUsers = mockUsers.filter(user => user._id && user._id !== 'unknown');
+      setUsers(filteredMockUsers);
+      if (filteredMockUsers.length > 0) {
+        setSelectedUser(filteredMockUsers[0]);
       }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentUser]);
 
   // Set user profile from auth context if available
   useEffect(() => {
@@ -440,8 +472,24 @@ const Messages = () => {
                   <button
                     className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
                     onClick={() => {
-                      // Handle view full profile action
-                      console.log('View full profile:', selectedUser._id);
+                      // Navigate to the user's profile page
+                      if (selectedUser && selectedUser._id) {
+                        console.log('Navigating to profile:', selectedUser._id);
+                        console.log('Selected user object:', selectedUser);
+
+                        // Check if this is the current user
+                        const isCurrentUser = selectedUser._id === currentUser?._id ||
+                                           selectedUser._id === currentUser?.id ||
+                                           selectedUser.firstName === 'You';
+
+                        if (isCurrentUser) {
+                          navigate('/profile/');
+                        } else {
+                          navigate(`/profile/${selectedUser._id}`);
+                        }
+                      } else {
+                        console.error('Cannot navigate to profile: selectedUser or _id is missing', selectedUser);
+                      }
                     }}
                   >
                     View Full Profile
