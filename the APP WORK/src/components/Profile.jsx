@@ -3,7 +3,8 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { FiSearch, FiSettings, FiLogOut, FiMoon, FiUser, FiEdit } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import assets from '../assets/assets.js';
-import authAPI from '../services/api';
+import { authAPI, postsAPI } from '../services/api';
+import api from '../services/api';
 
 
 function Profile() {
@@ -15,6 +16,8 @@ function Profile() {
   const [darkMode, setDarkMode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [userProfile, setUserProfile] = useState(null);
+  const [posts, setPosts] = useState([]);
+  const [loadingPosts, setLoadingPosts] = useState(false);
   const dropdownRef = useRef(null);
 
   // Check if this is the current user's profile
@@ -40,7 +43,7 @@ function Profile() {
           userData = authUser.data || authUser;
         } else if (userId) {
           // For other users, fetch their profile
-          const response = await authAPI.get(`/api/users/${userId}`);
+          const response = await api.get(`/api/users/${userId}`);
           userData = response.data;
         } else if (location.state?.user) {
           // If user data was passed via location state
@@ -69,6 +72,24 @@ function Profile() {
     
     fetchUserProfile();
   }, [authUser, userId, isCurrentUser, location.state]);
+
+  // Fetch posts for this profile
+  useEffect(() => {
+    const loadPosts = async () => {
+      try {
+        setLoadingPosts(true);
+        const targetId = userId || authUser?._id || authUser?.id || userProfile?._id || userProfile?.id;
+        if (!targetId) return;
+        const res = await postsAPI.getUserPosts(targetId);
+        setPosts(res.data || []);
+      } catch (e) {
+        console.error('Failed to load posts:', e);
+      } finally {
+        setLoadingPosts(false);
+      }
+    };
+    loadPosts();
+  }, [userId, authUser, userProfile]);
   // Get user data with proper fallbacks
   const getUserData = () => {
     // Use the userProfile state which is already properly set in the useEffect
@@ -139,7 +160,7 @@ function Profile() {
   }
   
   const fullName = displayName;
-  const isOwnProfile = isCurrentUser || (authUser && user && (authUser._id === user._id || authUser.id === user.id));
+  const isOwnProfile = isCurrentUser || (authUser && userProfile && (authUser._id === userProfile._id || authUser.id === userProfile.id));
   
   // Fallback avatar URL using UI Avatars API with initials
   const getAvatarUrl = (name, size = 200) => {
@@ -487,8 +508,40 @@ function Profile() {
             </div>
           </div>
         </div>
+        {/* Posts Section */}
+        <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pb-12 mt-8">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700">
+            <div className="px-6 py-4 sm:px-10 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white">Posts</h3>
+            </div>
+            <div className="divide-y divide-gray-200 dark:divide-gray-700">
+              {loadingPosts ? (
+                <div className="p-6 text-gray-500">Loading posts...</div>
+              ) : posts.length === 0 ? (
+                <div className="p-6 text-gray-500">No posts yet.</div>
+              ) : (
+                posts.map((p) => (
+                  <div key={p._id} className="p-6">
+                    {p.text && <p className="mb-3 text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{p.text}</p>}
+                    {p.mediaUrl && (
+                      p.mediaType === 'video' ? (
+                        <video src={`http://localhost:5000${p.mediaUrl}`} controls className="w-full rounded-lg" />
+                      ) : (
+                        <img src={`http://localhost:5000${p.mediaUrl}`} alt="post media" className="w-full rounded-lg object-cover" />
+                      )
+                    )}
+                    <div className="mt-2 text-xs text-gray-500">
+                      {new Date(p.createdAt).toLocaleString()}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </section>
       </main>
     </div>
   );
 }
+
 export default Profile;

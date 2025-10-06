@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { postsAPI } from '../services/api';
 import { FiImage, FiVideo, FiX, FiSend } from 'react-icons/fi';
 
 const CreatePost = () => {
@@ -7,30 +8,56 @@ const CreatePost = () => {
   const [postText, setPostText] = useState('');
   const [mediaPreview, setMediaPreview] = useState(null);
   const [mediaType, setMediaType] = useState(null);
+  const [mediaUrl, setMediaUrl] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);
 
-  const handleMediaUpload = (e) => {
+  const handleMediaUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     const fileType = file.type.split('/')[0];
-    if (fileType !== 'image' && fileType !== 'video') {
-      alert('Please upload an image or video file');
+    const validImageTypes = ['image/jpeg', 'image/png', 'image/gif'];
+    const validVideoTypes = ['video/mp4', 'video/webm', 'video/ogg'];
+
+    if (
+      (fileType === 'image' && !validImageTypes.includes(file.type)) ||
+      (fileType === 'video' && !validVideoTypes.includes(file.type))
+    ) {
+      alert('Please upload a supported image (JPEG, PNG, GIF) or video (MP4, WebM, OGG) file');
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 
-    setMediaType(fileType);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setMediaPreview(reader.result);
-    };
-    reader.readAsDataURL(file);
+    setIsUploading(true);
+    try {
+      const uploadResponse = await postsAPI.uploadFile(file);
+      if (uploadResponse.success) {
+        setMediaType(fileType);
+        setMediaUrl(uploadResponse.data.url);
+
+        const previewReader = new FileReader();
+        previewReader.onloadend = () => {
+          setMediaPreview(previewReader.result);
+        };
+        previewReader.readAsDataURL(file);
+      } else {
+        throw new Error('Upload failed');
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      alert(`Failed to upload file: ${error.message || 'Please try again.'}`);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const removeMedia = () => {
     setMediaPreview(null);
     setMediaType(null);
+    setMediaUrl(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -38,33 +65,30 @@ const CreatePost = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!postText.trim() && !mediaPreview) {
+    if (!postText.trim() && !mediaUrl) {
       alert('Please add some text or media to your post');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      // Here you would typically upload the media to a server
-      // and then create a post with the returned URL
-      console.log('Creating post with:', { postText, mediaType });
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+      const payload = {
+        text: postText,
+        mediaUrl: mediaUrl || '',
+        mediaType: mediaType || '',
+      };
+      const res = await postsAPI.create(payload);
+      console.log('Post created:', res);
+
       // Reset form
       setPostText('');
-      setMediaPreview(null);
-      setMediaType(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-      
-      // Navigate back to home or show success message
-      navigate('/home');
+      removeMedia(); // Reuse removeMedia to avoid duplicating reset logic
+
+      // Navigate to profile
+      navigate('/profile');
     } catch (error) {
       console.error('Error creating post:', error);
-      alert('Failed to create post. Please try again.');
+      alert(`Failed to create post: ${error.message || 'Please try again.'}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -75,9 +99,10 @@ const CreatePost = () => {
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold">Create Post</h1>
-          <button 
+          <button
             onClick={() => navigate('/home')}
             className="text-gray-400 hover:text-white transition-colors"
+            aria-label="Cancel post"
           >
             <FiX size={24} />
           </button>
@@ -90,27 +115,30 @@ const CreatePost = () => {
               onChange={(e) => setPostText(e.target.value)}
               placeholder="What's on your mind?"
               className="w-full bg-transparent border-none outline-none resize-none text-gray-200 placeholder-gray-500 min-h-[100px]"
+              aria-label="Post content"
             />
 
             {mediaPreview && (
               <div className="mt-4 relative group">
                 {mediaType === 'image' ? (
-                  <img 
-                    src={mediaPreview} 
-                    alt="Preview" 
+                  <img
+                    src={mediaPreview}
+                    alt="Media preview"
                     className="w-full rounded-lg max-h-96 object-cover"
                   />
                 ) : (
-                  <video 
-                    src={mediaPreview} 
-                    controls 
+                  <video
+                    src={mediaPreview}
+                    controls
                     className="w-full rounded-lg max-h-96"
+                    aria-label="Video preview"
                   />
                 )}
                 <button
                   type="button"
                   onClick={removeMedia}
                   className="absolute top-2 right-2 bg-black/70 rounded-full p-2 hover:bg-black/90 transition-colors"
+                  aria-label="Remove media"
                 >
                   <FiX size={20} />
                 </button>
@@ -120,21 +148,27 @@ const CreatePost = () => {
 
           <div className="flex items-center justify-between">
             <div className="flex space-x-2">
-              <label className="p-2 rounded-full hover:bg-gray-800 cursor-pointer transition-colors">
+              <label
+                className="p-2 rounded-full hover:bg-gray-800 cursor-pointer transition-colors"
+                aria-label="Upload image"
+              >
                 <FiImage size={24} className="text-green-500" />
                 <input
                   type="file"
                   ref={fileInputRef}
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/gif"
                   onChange={handleMediaUpload}
                   className="hidden"
                 />
               </label>
-              <label className="p-2 rounded-full hover:bg-gray-800 cursor-pointer transition-colors">
+              <label
+                className="p-2 rounded-full hover:bg-gray-800 cursor-pointer transition-colors"
+                aria-label="Upload video"
+              >
                 <FiVideo size={24} className="text-blue-500" />
                 <input
                   type="file"
-                  accept="video/*"
+                  accept="video/mp4,video/webm,video/ogg"
                   onChange={handleMediaUpload}
                   className="hidden"
                 />
@@ -143,14 +177,14 @@ const CreatePost = () => {
 
             <button
               type="submit"
-              disabled={isSubmitting || (!postText.trim() && !mediaPreview)}
+              disabled={isSubmitting || isUploading || (!postText.trim() && !mediaUrl)}
               className={`px-6 py-2 rounded-full font-medium flex items-center space-x-2 ${
-                (isSubmitting || (!postText.trim() && !mediaPreview))
+                isSubmitting || isUploading || (!postText.trim() && !mediaUrl)
                   ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
                   : 'bg-gradient-to-r from-cyan-500 to-blue-500 hover:opacity-90'
               }`}
             >
-              {isSubmitting ? 'Posting...' : 'Post'}
+              {isUploading ? 'Uploading...' : isSubmitting ? 'Posting...' : 'Post'}
               <FiSend className="ml-2" />
             </button>
           </div>

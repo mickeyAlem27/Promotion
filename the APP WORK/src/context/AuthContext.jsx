@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
-import authAPI from '../services/api';
+import { authAPI } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -15,7 +15,7 @@ export const AuthProvider = ({ children }) => {
       try {
         const token = localStorage.getItem('token');
         if (token) {
-          const response = await authAPI.get('/auth/me');
+          const response = await authAPI.getMe();
           if (response.data) {
             setUser(response.data);
             setIsAuthenticated(true);
@@ -39,10 +39,10 @@ export const AuthProvider = ({ children }) => {
     setError('');
     
     try {
-      const response = await authAPI.post('/auth/login', { email, password });
+      const response = await authAPI.login({ email, password });
       if (response.data.token) {
         localStorage.setItem('token', response.data.token);
-        const userResponse = await authAPI.get('/auth/me');
+        const userResponse = await authAPI.getMe();
         setUser(userResponse.data);
         setIsAuthenticated(true);
         return { success: true };
@@ -77,7 +77,7 @@ export const AuthProvider = ({ children }) => {
     setError('');
     
     try {
-      const response = await authAPI.post('/auth/register', userData);
+      const response = await authAPI.register(userData);
       if (response.data.success) {
         // Return success without auto-login, let the component handle the navigation
         return { success: true };

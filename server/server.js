@@ -4,20 +4,68 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const dotenv = require('dotenv');
 const path = require('path');
+const multer = require('multer');
 const ErrorResponse = require('./utils/errorResponse');
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '.env') });
 
+// Validate required environment variables
+const requiredEnvVars = ['MONGODB_URI', 'JWT_SECRET'];
+const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
+
+if (missingEnvVars.length > 0) {
+  console.error('❌ Missing required environment variables:', missingEnvVars.join(', '));
+  console.error('Please create a .env file with the required variables.');
+  process.exit(1);
+}
+
 // Create Express app
 const app = express();
 
 // Middleware
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// File upload configuration
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, path.join(__dirname, 'uploads/'));
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const fileFilter = (req, file, cb) => {
+  // Accept images and videos
+  if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/')) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only images and videos are allowed'), false);
+  }
+};
+
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit for videos
+    files: 5 // Maximum 5 files at once
+  }
+});
+
+// Serve uploaded files statically (before CORS to avoid blocking static files)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // CORS configuration
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174', 'http://localhost:5176'];
+
 const corsOptions = {
-  origin: ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174'],
+  origin: allowedOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -35,8 +83,6 @@ app.use(cookieParser(process.env.JWT_SECRET));
 
 // MongoDB connection options
 const mongoOptions = {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
   serverSelectionTimeoutMS: 30000,
   socketTimeoutMS: 45000,
   connectTimeoutMS: 30000,
@@ -63,34 +109,29 @@ if (process.env.NODE_ENV === 'development') {
   });
 }
 
-// Get the default connection
-const db = mongoose.connection;
+// Setup MongoDB connection event listeners
+const setupMongooseListeners = () => {
+  const db = mongoose.connection;
+  
+  db.on('connected', () => {
+    console.log('✅ MongoDB connected successfully');
+    console.log('📊 Database name:', db.name);
+    console.log('📡 Connection host:', db.host);
+    console.log('🔌 Connection port:', db.port);
+  });
 
-// Event listeners for better debugging
-db.on('connecting', () => {
-  console.log('🔄 Connecting to MongoDB...');
-});
+  db.on('error', (err) => {
+    console.error('❌ MongoDB connection error:', err.message);
+  });
 
-db.on('connected', () => {
-  console.log('✅ MongoDB connected successfully');
-  console.log('📊 Database name:', db.name);
-  console.log('📡 Connection host:', db.host);
-  console.log('🔌 Connection port:', db.port);
-});
+  db.on('disconnected', () => {
+    console.log('ℹ️ MongoDB disconnected');
+  });
 
-db.on('error', (err) => {
-  console.error('❌ MongoDB connection error:', err);
-  if (err.name === 'MongoServerError') {
-    console.error('MongoDB Server Error:', err.message);
-  } else if (err.name === 'MongooseServerSelectionError') {
-    console.error('MongoDB Server Selection Error:', err.message);
-    console.error('This usually means the MongoDB server is not running or the connection string is incorrect');
-  }
-});
-
-db.on('disconnected', () => {
-  console.log('ℹ️ MongoDB disconnected');
-});
+  db.on('reconnected', () => {
+    console.log('🔄 MongoDB reconnected');
+  });
+};
 
 // Connect to MongoDB with enhanced options and retry logic
 const connectWithRetry = async (retryCount = 0) => {
@@ -101,25 +142,10 @@ const connectWithRetry = async (retryCount = 0) => {
   try {
     console.log(`🔗 Attempting to connect to MongoDB (Attempt ${retryCount + 1}/${maxRetries})...`);
     
-    // Remove any existing listeners to prevent duplicates
-    mongoose.connection.removeAllListeners();
-    
-    // Add connection event listeners for better debugging
-    mongoose.connection.on('connecting', () => {
-      console.log('🔌 Connecting to MongoDB...');
-    });
-
-    mongoose.connection.on('connected', () => {
-      console.log('✅ MongoDB connected successfully');
-    });
-
-    mongoose.connection.on('error', (err) => {
-      console.error('❌ MongoDB connection error:', err.message);
-    });
-
-    mongoose.connection.on('disconnected', () => {
-      console.warn('⚠️ MongoDB disconnected');
-    });
+    // Setup event listeners only on first attempt
+    if (retryCount === 0) {
+      setupMongooseListeners();
+    }
     
     // Connect to MongoDB with a timeout
     const connectPromise = mongoose.connect(process.env.MONGODB_URI, mongoOptions);
@@ -189,7 +215,7 @@ const setupCollections = async (conn) => {
     console.log('📋 Available collections:', collectionNames);
     
     // Check if required collections exist
-    const requiredCollections = ['users', 'messages', 'conversations'];
+    const requiredCollections = ['users', 'messages', 'conversations', 'posts', 'jobs'];
     const missingCollections = requiredCollections.filter(c => !collectionNames.includes(c));
     
     if (missingCollections.length > 0) {
@@ -216,6 +242,31 @@ const setupCollections = async (conn) => {
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/messages', require('./routes/messageRoutes'));
+app.use('/api/posts', require('./routes/postRoutes'));
+app.use('/api/jobs', require('./routes/jobRoutes'));
+
+// File upload route
+app.post('/api/upload', upload.single('file'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No file uploaded' });
+    }
+
+    // Return file information
+    const fileInfo = {
+      filename: req.file.filename,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      url: `/uploads/${req.file.filename}`
+    };
+
+    res.json({ success: true, data: fileInfo });
+  } catch (error) {
+    console.error('Upload error:', error);
+    res.status(500).json({ success: false, error: 'File upload failed' });
+  }
+});
 
 // Simple health check route
 app.get('/', (req, res) => {
@@ -234,13 +285,14 @@ app.use((req, res, next) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  // Log error details
+  console.error('Error:', err.message);
+  if (process.env.NODE_ENV === 'development') {
+    console.error(err.stack);
+  }
   
   let error = { ...err };
   error.message = err.message;
-
-  // Log to console for dev
-  console.error(err);
 
   // Mongoose bad ObjectId
   if (err.name === 'CastError') {
@@ -288,40 +340,6 @@ const startServer = async () => {
     const PORT = parseInt(process.env.PORT, 10) || 5000;
     const HOST = '0.0.0.0';
     
-    // Kill any process using the port
-    const killPortProcess = () => {
-      return new Promise((resolve) => {
-        const { exec } = require('child_process');
-        const isWindows = process.platform === 'win32';
-        const command = isWindows
-          ? `netstat -ano | findstr :${PORT}`
-          : `lsof -i :${PORT} | grep LISTEN`;
-
-        exec(command, (err, stdout) => {
-          if (stdout) {
-            const processId = isWindows
-              ? stdout.trim().split(/\s+/).pop()
-              : stdout.trim().split(/\s+/)[1];
-            
-            if (processId && parseInt(processId) !== process.pid) {
-              console.log(`Killing process ${processId} on port ${PORT}...`);
-              try {
-                process.kill(processId, 'SIGTERM');
-              } catch (killErr) {
-                console.warn(`Could not kill process ${processId}:`, killErr.message);
-              }
-            } else {
-              console.log(`Port ${PORT} is in use by this process; skipping kill.`);
-            }
-          }
-          resolve();
-        });
-      });
-    };
-    
-    // Kill any existing process on the port
-    await killPortProcess();
-    
     // Start the HTTP server
     const server = app.listen(PORT, HOST, () => {
       console.log(`🚀 Server running in ${process.env.NODE_ENV} mode on http://${HOST}:${PORT}`);
@@ -339,17 +357,28 @@ const startServer = async () => {
     
     // Handle process termination
     const shutdown = async () => {
-      console.log('\nShutting down server...');
-      server.close(() => {
-        console.log('Server stopped');
-        process.exit(0);
+      console.log('\n🛑 Shutting down server...');
+      
+      // Close HTTP server
+      server.close(async () => {
+        console.log('✅ HTTP server stopped');
+        
+        // Close MongoDB connection
+        try {
+          await mongoose.connection.close();
+          console.log('✅ MongoDB connection closed');
+          process.exit(0);
+        } catch (err) {
+          console.error('❌ Error closing MongoDB connection:', err.message);
+          process.exit(1);
+        }
       });
       
-      // Force close after 5 seconds
+      // Force close after 10 seconds
       setTimeout(() => {
-        console.error('Could not close connections in time, forcefully shutting down');
+        console.error('⚠️  Could not close connections in time, forcefully shutting down');
         process.exit(1);
-      }, 5000);
+      }, 10000);
     };
     
     // Handle process termination signals

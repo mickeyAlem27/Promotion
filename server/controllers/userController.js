@@ -51,5 +51,19 @@ const searchUsers = asyncHandler(async (req, res) => {
 
 module.exports = {
   getUsers,
-  searchUsers
+  searchUsers,
+  // Get single user by id
+  getUserById: asyncHandler(async (req, res) => {
+    try {
+      const user = await User.findById(req.params.userId)
+        .select('-password -resetPasswordToken -resetPasswordExpire -emailVerificationToken -emailVerificationExpire');
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      res.json(user);
+    } catch (error) {
+      console.error('Error fetching user by id:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  })
 };

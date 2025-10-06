@@ -191,4 +191,74 @@ export const authAPI = {
   }
 };
 
+// Posts API
+export const postsAPI = {
+  // Create a post
+  create: async ({ text, mediaUrl, mediaType }) => {
+    const payload = { text: text?.trim() || '', mediaUrl: mediaUrl || '', mediaType: mediaType || '' };
+    const res = await api.post('/posts', payload);
+    return res.data;
+  },
+
+  // Get current user's posts
+  getMyPosts: async () => {
+    const res = await api.get('/posts/me');
+    return res.data;
+  },
+
+  // Get posts for a specific user
+  getUserPosts: async (userId) => {
+    const res = await api.get(`/posts/user/${userId}`);
+    return res.data;
+  },
+
+  // Get feed
+  getFeed: async () => {
+    const res = await api.get('/posts/feed');
+    return res.data;
+  },
+
+  // Upload file
+  uploadFile: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await api.post('/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return res.data;
+  }
+};
+
+// Jobs API
+export const jobsAPI = {
+  // Get all active jobs
+  getJobs: async () => {
+    const res = await api.get('/jobs');
+    return res.data;
+  },
+
+  // Get my jobs (for promoters)
+  getMyJobs: async () => {
+    const res = await api.get('/jobs/me');
+    return res.data;
+  },
+
+  // Create a new job
+  createJob: async (jobData) => {
+    const res = await api.post('/jobs', jobData);
+    return res.data;
+  },
+
+  // Deactivate a job
+  deactivateJob: async (jobId) => {
+    const res = await api.patch(`/jobs/${jobId}/deactivate`);
+    return res.data;
+  }
+};
+
+// Export the base API instance for direct use
 export default api;
+
