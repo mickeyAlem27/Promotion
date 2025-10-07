@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext'; // Assuming this is your auth context
+import { postsAPI, jobsAPI } from '../services/api';
+import api from '../services/api';
 import {
   FiSettings,
   FiLogOut,
@@ -12,6 +14,7 @@ import {
   FiShare2,
   FiSun,
   FiMoon,
+  FiUsers,
 } from 'react-icons/fi';
 
 // Mock data (ideally fetched from an API)
@@ -90,8 +93,11 @@ const featuredCreators = [
 function Home() {
   const { user, isAuthenticated, isLoading: authLoading, logout } = useAuth();
   const navigate = useNavigate();
-  const [posts] = useState(mockPosts); // Removed unused setPosts
+  const [posts, setPosts] = useState([]); // Real posts from API
+  const [jobs, setJobs] = useState([]); // Real jobs from API
+  const [featuredCreators, setFeaturedCreators] = useState([]); // Real featured creators from API
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
@@ -117,12 +123,84 @@ function Home() {
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
-      localStorage.setItem('darkMode', 'true');
     } else {
       document.documentElement.classList.remove('dark');
       localStorage.setItem('darkMode', 'false');
     }
   }, [darkMode]);
+  // Fetch real jobs from API
+  useEffect(() => {
+    const fetchJobs = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        console.log('🔄 Fetching jobs from API...');
+
+        const response = await jobsAPI.getJobs();
+        console.log('📋 Jobs API response:', response);
+
+        // Handle different response formats
+        let jobsData = [];
+        if (response.data) {
+          jobsData = Array.isArray(response.data) ? response.data : response.data.data || [];
+        } else if (Array.isArray(response)) {
+          jobsData = response;
+        }
+
+        console.log('📋 Processed jobs data:', jobsData.length);
+        setJobs(jobsData);
+      } catch (err) {
+        console.error('❌ Error fetching jobs:', err);
+        setError('Failed to load jobs. Please try again later.');
+        // Fallback to empty jobs array
+        setJobs([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (isAuthenticated) {
+      fetchJobs();
+    }
+  }, [isAuthenticated]);
+
+  // Fetch featured creators (real users from database)
+  useEffect(() => {
+    const fetchFeaturedCreators = async () => {
+      try {
+        console.log('🔄 Fetching featured creators...');
+        const response = await api.get('/users');
+
+        // Handle different response formats
+        let usersData = [];
+        if (response.data) {
+          usersData = Array.isArray(response.data) ? response.data : response.data.data || [];
+        }
+
+        // Filter out current user and limit to 6 for featured creators
+        const creators = usersData
+          .filter(u => u._id !== user?._id && u._id !== user?.id)
+          .slice(0, 6)
+          .map(u => ({
+            id: u._id,
+            name: `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'User',
+            role: u.role || 'User',
+            avatar: u.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent((u.firstName || '') + ' ' + (u.lastName || ''))}&background=1f2937&color=fff`
+          }));
+
+        console.log('📋 Featured creators:', creators.length);
+        setFeaturedCreators(creators);
+      } catch (err) {
+        console.error('❌ Error fetching featured creators:', err);
+        // Fallback to empty array
+        setFeaturedCreators([]);
+      }
+    };
+
+    if (isAuthenticated && user) {
+      fetchFeaturedCreators();
+    }
+  }, [isAuthenticated, user]);
 
   // Set user profile from auth context
   useEffect(() => {
@@ -317,91 +395,152 @@ function Home() {
         {/* Featured Creators */}
         <div className="mb-16">
           <h2 className="text-2xl font-bold text-white mb-6">Featured Creators</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
-            {featuredCreators.map((creator) => (
-              <div
-                key={creator.id}
-                className="glass p-4 rounded-xl text-center cursor-pointer hover:bg-gray-800/50 transition-colors"
-                onClick={() => handleProfileClick(creator.id)}
-                role="button"
-                aria-label={`View ${creator.name}'s profile`}
-              >
-                <div className="w-16 h-16 mx-auto mb-3 rounded-full overflow-hidden border-2 border-teal-400/50">
-                  <img src={creator.avatar} alt={creator.name} className="w-full h-full object-cover" />
+          {featuredCreators.length > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
+              {featuredCreators.map((creator) => (
+                <div
+                  key={creator.id}
+                  className="glass p-4 rounded-xl text-center cursor-pointer hover:bg-gray-800/50 transition-colors"
+                  onClick={() => handleProfileClick(creator.id)}
+                  role="button"
+                  aria-label={`View ${creator.name}'s profile`}
+                >
+                  <div className="w-16 h-16 mx-auto mb-3 rounded-full overflow-hidden border-2 border-teal-400/50">
+                    <img src={creator.avatar} alt={creator.name} className="w-full h-full object-cover" />
+                  </div>
+                  <h3 className="font-medium text-white">{creator.name}</h3>
+                  <p className="text-xs text-gray-400">{creator.role}</p>
                 </div>
-                <h3 className="font-medium text-white">{creator.name}</h3>
-                <p className="text-xs text-gray-400">{creator.role}</p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="glass p-8 rounded-xl text-center">
+              <div className="text-4xl mb-4">👥</div>
+              <h3 className="text-lg font-medium text-white mb-2">No Creators Yet</h3>
+              <p className="text-gray-400">Be the first to share your content!</p>
+            </div>
+          )}
         </div>
 
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Feed */}
           <div className="lg:col-span-2 space-y-6">
-            <h2 className="text-2xl font-bold text-white mb-2">Latest Posts</h2>
-            {posts.map((post) => (
-              <div
-                key={post.id}
-                className="glass p-5 rounded-2xl hover:shadow-[0_8px_30px_rgba(0,0,0,0.3)] transition-all duration-300 transform hover:-translate-y-1"
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <div
-                    className="flex items-center space-x-3 cursor-pointer"
-                    onClick={() => handleProfileClick(post.user.id)}
-                    role="button"
-                    aria-label={`View ${post.user.name}'s profile`}
-                  >
-                    <img
-                      src={post.user.avatar}
-                      alt={post.user.name}
-                      className="w-12 h-12 rounded-full border-2 border-teal-400/50"
-                    />
-                    <div>
-                      <h3 className="font-semibold text-white">{post.user.name}</h3>
-                      <p className="text-xs text-gray-400">
-                        {post.user.role} • {post.content.timeAgo}
-                      </p>
+            <h2 className="text-2xl font-bold text-white mb-2">Latest Job Opportunities</h2>
+
+            {isLoading ? (
+              // Loading state
+              <div className="space-y-6">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="glass p-5 rounded-2xl animate-pulse">
+                    <div className="flex items-center space-x-3 mb-4">
+                      <div className="w-12 h-12 bg-gray-700 rounded-full"></div>
+                      <div className="flex-1 space-y-2">
+                        <div className="h-4 bg-gray-700 rounded w-3/4"></div>
+                        <div className="h-3 bg-gray-700 rounded w-1/2"></div>
+                      </div>
+                    </div>
+                    <div className="space-y-2 mb-4">
+                      <div className="h-4 bg-gray-700 rounded"></div>
+                      <div className="h-4 bg-gray-700 rounded w-5/6"></div>
+                    </div>
+                    <div className="h-48 bg-gray-700 rounded-lg"></div>
+                  </div>
+                ))}
+              </div>
+            ) : error ? (
+              // Error state
+              <div className="glass p-8 rounded-2xl text-center">
+                <div className="text-4xl mb-4">⚠️</div>
+                <h3 className="text-lg font-medium text-white mb-2">Unable to Load Jobs</h3>
+                <p className="text-gray-400 mb-4">{error}</p>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : jobs.length > 0 ? (
+              // Jobs list
+              jobs.map((job) => (
+                <div
+                  key={job._id || job.id}
+                  className="glass p-5 rounded-2xl hover:shadow-[0_8px_30px_rgba(0,0,0,0.3)] transition-all duration-300 transform hover:-translate-y-1"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div
+                      className="flex items-center space-x-3 cursor-pointer"
+                      onClick={() => handleProfileClick(job.user?._id || job.user?.id || job.createdBy)}
+                      role="button"
+                      aria-label={`View ${job.user?.name || 'Employer'}'s profile`}
+                    >
+                      <img
+                        src={job.user?.photo || job.user?.avatar || 'https://randomuser.me/api/portraits/lego/1.jpg'}
+                        alt={job.user?.name || 'Employer'}
+                        className="w-12 h-12 rounded-full border-2 border-teal-400/50"
+                        onError={(e) => {
+                          e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(job.user?.name || 'Employer')}&background=1f2937&color=fff`;
+                        }}
+                      />
+                      <div>
+                        <h3 className="font-semibold text-white">{job.user?.name || job.user?.firstName + ' ' + job.user?.lastName || 'Employer'}</h3>
+                        <p className="text-xs text-gray-400">
+                          {job.user?.role || 'Employer'} • {job.createdAt ? new Date(job.createdAt).toLocaleDateString() : 'Recently'}
+                        </p>
+                      </div>
                     </div>
                   </div>
+
+                  <div className="mb-4">
+                    <h3 className="text-xl font-bold text-white mb-2">{job.title}</h3>
+                    <p className="text-gray-200 mb-3">{job.description}</p>
+
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      <span className="px-3 py-1 bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100 rounded-full text-sm">
+                        {job.category || 'General'}
+                      </span>
+                      <span className="px-3 py-1 bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100 rounded-full text-sm">
+                        ${job.budget || 'TBD'}
+                      </span>
+                      <span className="px-3 py-1 bg-purple-100 text-purple-800 dark:bg-purple-800 dark:text-purple-100 rounded-full text-sm">
+                        {job.location || 'Remote'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-700">
+                    <button className="flex items-center space-x-1 text-gray-400 hover:text-white" aria-label={`View applications (${job.applications?.length || 0})`}>
+                      <FiUsers className="w-5 h-5" />
+                      <span>{job.applications?.length || 0} applications</span>
+                    </button>
+                    <button className="flex items-center space-x-1 text-gray-400 hover:text-white" aria-label={`View job details`}>
+                      <FiBriefcase className="w-5 h-5" />
+                      <span>View Details</span>
+                    </button>
+                    <button className="flex items-center space-x-1 text-gray-400 hover:text-white" aria-label={`Save job`}>
+                      <FiHeart className="w-5 h-5" />
+                      <span>Save</span>
+                    </button>
+                  </div>
                 </div>
-
-                <p className="text-gray-200 mb-4">{post.content.text}</p>
-
-                {post.content.type === 'photo' ? (
-                  <img
-                    src={post.content.url}
-                    alt="Post content"
-                    className="w-full rounded-lg object-cover max-h-96"
-                  />
-                ) : (
-                  <video
-                    controls
-                    className="w-full rounded-lg max-h-96"
-                    poster="https://placehold.co/800x450/1f2937/ffffff?text=Video+Thumbnail"
+              ))
+            ) : (
+              // No jobs state
+              <div className="glass p-8 rounded-2xl text-center">
+                <div className="text-4xl mb-4">💼</div>
+                <h3 className="text-lg font-medium text-white mb-2">No Jobs Yet</h3>
+                <p className="text-gray-400 mb-4">Be the first to post a job opportunity!</p>
+                {canPostJobs && (
+                  <button
+                    onClick={() => navigate('/create-job')}
+                    className="px-6 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-full hover:opacity-90 transition-opacity"
                   >
-                    <source src={post.content.url} type="video/mp4" />
-                    Your browser does not support the video tag.
-                  </video>
+                    <FiBriefcase className="mr-2 inline" /> Post First Job
+                  </button>
                 )}
-
-                <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-700">
-                  <button className="flex items-center space-x-1 text-gray-400 hover:text-white" aria-label={`Like post (${post.content.likes} likes)`}>
-                    <FiHeart className="w-5 h-5" />
-                    <span>{post.content.likes}</span>
-                  </button>
-                  <button className="flex items-center space-x-1 text-gray-400 hover:text-white" aria-label={`Comment on post (${post.content.comments} comments)`}>
-                    <FiMessageSquare className="w-5 h-5" />
-                    <span>{post.content.comments}</span>
-                  </button>
-                  <button className="flex items-center space-x-1 text-gray-400 hover:text-white" aria-label={`Share post (${post.content.shares} shares)`}>
-                    <FiShare2 className="w-5 h-5" />
-                    <span>{post.content.shares}</span>
-                  </button>
-                </div>
               </div>
-            ))}
+            )}
           </div>
 
           {/* Sidebar */}
