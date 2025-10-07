@@ -65,7 +65,7 @@ exports.register = async (req, res, next) => {
 // @access  Public
 exports.login = async (req, res, next) => {
   console.log('Login attempt:', { email: req.body.email });
-  
+
   const { email, password } = req.body;
 
   // Check if email and password are provided
@@ -75,10 +75,39 @@ exports.login = async (req, res, next) => {
   }
 
   try {
+    // Check if MongoDB is connected
+    if (require('mongoose').connection.readyState !== 1) {
+      console.log('MongoDB not connected, using mock authentication for testing');
+
+      // Mock authentication for testing when DB is not available
+      if (email === 'test@test.com' && password === 'password') {
+        const mockUser = {
+          id: '507f1f77bcf86cd799439011',
+          firstName: 'Test',
+          lastName: 'User',
+          email: email,
+          role: 'user'
+        };
+
+        // Create token
+        const token = 'mock-jwt-token-for-testing';
+
+        res.status(200).json({
+          success: true,
+          token,
+          user: mockUser,
+          message: 'Mock login successful (MongoDB not connected)'
+        });
+        return;
+      } else {
+        return next(new ErrorResponse('Invalid credentials', 401));
+      }
+    }
+
     // Check if user exists
     const user = await User.findOne({ email }).select('+password');
     console.log('User found:', user ? 'Yes' : 'No');
-    
+
     if (!user) {
       console.log('No user found with email:', email);
       return next(new ErrorResponse('Invalid credentials', 401));
@@ -88,7 +117,7 @@ exports.login = async (req, res, next) => {
     console.log('Checking password...');
     const isMatch = await user.matchPassword(password);
     console.log('Password match:', isMatch);
-    
+
     if (!isMatch) {
       console.log('Password does not match');
       return next(new ErrorResponse('Invalid credentials', 401));
@@ -101,14 +130,14 @@ exports.login = async (req, res, next) => {
     const cookieExpireDays = Number(process.env.JWT_COOKIE_EXPIRE) || 30; // Default to 30 days if not set
     const expires = new Date();
     expires.setDate(expires.getDate() + cookieExpireDays);
-    
+
     const options = {
       expires: expires,
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict'
     };
-    
+
     console.log('Cookie options:', options);
     console.log('Cookie will expire on:', expires.toISOString());
 
@@ -127,6 +156,7 @@ exports.login = async (req, res, next) => {
         }
       });
   } catch (error) {
+    console.error('Login error:', error);
     next(error);
   }
 };
@@ -146,17 +176,86 @@ exports.getMe = async (req, res, next) => {
   }
 };
 
-// @desc    Logout user / clear cookie
+// @desc    Update user profile
+// @route   PUT /api/auth/profile
+// @access  Private
+exports.updateProfile = async (req, res, next) => {
+  try {
+    const fieldsToUpdate = {
+      firstName: req.body.firstName,
+      lastName: req.body.lastName,
+      email: req.body.email,
+      phone: req.body.phone,
+      location: req.body.location,
+      company: req.body.company,
+      jobTitle: req.body.jobTitle,
+      bio: req.body.bio,
+      skills: req.body.skills,
+      photo: req.body.photo
+    };
+
+    // Remove undefined fields
+    Object.keys(fieldsToUpdate).forEach(key => {
+      if (fieldsToUpdate[key] === undefined || fieldsToUpdate[key] === null || fieldsToUpdate[key] === '') {
+        delete fieldsToUpdate[key];
+      }
+    });
+
+    const user = await User.findByIdAndUpdate(req.user.id, fieldsToUpdate, {
+      new: true,
+      runValidators: true
+    }).select('-password');
+
+    res.status(200).json({
+      success: true,
+      user
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Change password
+// @route   PUT /api/auth/password
+// @access  Private
+exports.changePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    // Get user with password
+    const user = await User.findById(req.user.id).select('+password');
+
+    // Check current password
+    if (!(await user.matchPassword(currentPassword))) {
+      return next(new ErrorResponse('Current password is incorrect', 400));
+    }
+
+    // Update password
+    user.password = newPassword;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Password updated successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Logout user
 // @route   GET /api/auth/logout
 // @access  Private
-exports.logout = (req, res) => {
-  res.cookie('token', 'none', {
-    expires: new Date(Date.now() + 10 * 1000),
-    httpOnly: true
-  });
+exports.logout = async (req, res, next) => {
+  try {
+    // Clear the authentication cookie
+    res.clearCookie('token');
 
-  res.status(200).json({
-    success: true,
-    data: {}
-  });
+    res.status(200).json({
+      success: true,
+      message: 'Successfully logged out'
+    });
+  } catch (error) {
+    next(error);
+  }
 };

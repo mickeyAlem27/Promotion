@@ -114,6 +114,11 @@ function App() {
               <MyJobs />
             </ProtectedRoute>
           } />
+          <Route path="/biography" element={
+            <ProtectedRoute>
+              <Biography />
+            </ProtectedRoute>
+          } />
           <Route path="/biography/:userId" element={
             <ProtectedRoute>
               <Biography />

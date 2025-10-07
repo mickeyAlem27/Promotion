@@ -73,26 +73,25 @@ const Messages = () => {
         .map(user => ({
           ...user,
           online: Math.random() > 0.5, // Random online status for demo
-          photo: user.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.firstName + ' ' + user.lastName)}&background=1f2937&color=fff`
+          photo: user.photo ? `http://localhost:5000${user.photo}` : `https://ui-avatars.com/api/?name=${encodeURIComponent(user.firstName + ' ' + user.lastName)}&background=1f2937&color=fff`
         }));
 
       console.log('Processed users:', otherUsers.length);
       console.log('User IDs:', otherUsers.map(u => u._id));
       setUsers(otherUsers);
 
-      // Select first user by default if available
       if (otherUsers.length > 0) {
         setSelectedUser(otherUsers[0]);
       } else {
         // If no other users, show current user as the only option for testing
         const currentUserForDisplay = {
-          _id: authUser?._id || authUser?.id,
-          firstName: authUser?.firstName || 'You',
-          lastName: authUser?.lastName || '',
-          role: authUser?.role || 'User',
-          photo: authUser?.photo || 'https://randomuser.me/api/portraits/lego/1.jpg',
-          bio: authUser?.bio || 'Your profile',
-          skills: Array.isArray(authUser?.skills) ? authUser.skills : [],
+          _id: currentUser?._id || currentUser?.id,
+          firstName: currentUser?.firstName || 'You',
+          lastName: currentUser?.lastName || '',
+          role: currentUser?.role || 'User',
+          photo: currentUser?.photo ? `http://localhost:5000${currentUser.photo}` : `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser?.firstName || 'You') + ' ' + (currentUser?.lastName || '')}&background=1f2937&color=fff`,
+          bio: currentUser?.bio || 'Your profile',
+          skills: Array.isArray(currentUser?.skills) ? currentUser.skills : [],
           online: true
         };
         setUsers([currentUserForDisplay]);
@@ -230,7 +229,7 @@ const Messages = () => {
           <div className="mt-4 flex items-center space-x-3 p-3 bg-gray-800/50 rounded-lg">
             <div className="relative">
               <img
-                src={userProfile?.photo || 'https://randomuser.me/api/portraits/lego/1.jpg'}
+                src={userProfile?.photo ? `http://localhost:5000${userProfile.photo}` : `https://ui-avatars.com/api/?name=${encodeURIComponent(userProfile?.name || 'User')}&background=1f2937&color=fff`}
                 alt={userProfile?.name || 'User'}
                 className="w-12 h-12 rounded-full object-cover border-2 border-blue-500"
                 onError={(e) => {
@@ -301,7 +300,7 @@ const Messages = () => {
                 >
                   <div className="relative">
                     <img 
-                      src={user.photo} 
+                      src={user.photo ? `http://localhost:5000${user.photo}` : `https://ui-avatars.com/api/?name=${encodeURIComponent(user.firstName + ' ' + user.lastName)}&background=1f2937&color=fff`}
                       alt={`${user.firstName} ${user.lastName}`}
                       className="w-12 h-12 rounded-full object-cover border-2 border-gray-700"
                       onError={(e) => {
@@ -427,7 +426,7 @@ const Messages = () => {
             <div className="flex flex-col items-center">
               <div className="relative mb-4">
                 <img 
-                  src={selectedUser.photo} 
+                  src={selectedUser.photo ? `http://localhost:5000${selectedUser.photo}` : `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedUser.firstName + ' ' + selectedUser.lastName)}&background=1f2937&color=fff`}
                   alt={`${selectedUser.firstName} ${selectedUser.lastName}`}
                   className="w-32 h-32 rounded-full object-cover border-4 border-blue-500"
                   onError={(e) => {

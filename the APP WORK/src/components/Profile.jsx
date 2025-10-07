@@ -71,36 +71,28 @@ function Profile() {
   useEffect(() => {
     console.log('Profile - Auth User:', authUser);
     console.log('Profile - User ID from URL:', userId);
-    
+
     const fetchUserProfile = async () => {
       try {
         setIsLoading(true);
         let userData;
-        
+
         if (isCurrentUser && authUser) {
-          // For current user, use auth context
+          // For current user, use auth context - this will be updated after profile changes
           console.log('Using auth user data for current user:', authUser);
           userData = {
             ...authUser,
-            firstName: authUser.firstName || 'User',
-            lastName: authUser.lastName || '',
-            email: authUser.email || 'Not provided',
-            role: authUser.role || 'user',
-            bio: authUser.bio || 'No bio available',
-            skills: Array.isArray(authUser.skills) ? authUser.skills : [],
-            photo: authUser.photo || 'https://randomuser.me/api/portraits/lego/1.jpg',
-            phone: authUser.phone || '',
-            location: authUser.location || '',
-            company: authUser.company || '',
-            jobTitle: authUser.jobTitle || '',
-            createdAt: authUser.createdAt || new Date().toISOString()
+            photo: authUser.photo ? `http://localhost:5000${authUser.photo}` : null
           };
         } else if (userId && userId !== 'unknown' && userId !== authUser?._id && userId !== authUser?.id) {
           // For other users, fetch their profile from database
           try {
             console.log('Fetching user data for ID:', userId);
             const response = await api.get(`/users/${userId}`);
-            userData = response.data;
+            userData = {
+              ...response.data,
+              photo: response.data.photo ? `http://localhost:5000${response.data.photo}` : null
+            };
             console.log('Fetched user data:', userData);
           } catch (error) {
             console.error('Error fetching user profile:', error);
@@ -116,21 +108,15 @@ function Profile() {
           }
         } else if (location.state?.user) {
           // If user data was passed via location state
-          userData = location.state.user;
+          userData = {
+            ...location.state.user,
+            photo: location.state.user.photo ? `http://localhost:5000${location.state.user.photo}` : null
+          };
         }
-        
+
         if (userData) {
           console.log('Profile - Setting user data:', userData);
-          setUserProfile({
-            ...userData,
-            photo: userData.photo || 'https://randomuser.me/api/portraits/lego/1.jpg',
-            bio: userData.bio || 'No bio available',
-            skills: userData.skills || [],
-            role: userData.role || 'User',
-            name: `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || 'User',
-            firstName: userData.firstName,
-            lastName: userData.lastName
-          });
+          setUserProfile(userData);
         }
       } catch (error) {
         console.error('Error fetching user profile:', error);
@@ -138,7 +124,7 @@ function Profile() {
         setIsLoading(false);
       }
     };
-    
+
     fetchUserProfile();
   }, [authUser, userId, isCurrentUser, location.state]);
 
@@ -163,7 +149,7 @@ function Profile() {
   const getUserData = () => {
     // Use the userProfile state which is already properly set in the useEffect
     const targetUser = userProfile;
-    
+
     if (!targetUser) {
       console.log('No user data available, using default values');
       return {
@@ -173,7 +159,7 @@ function Profile() {
         role: "User",
         bio: "No bio available",
         skills: [],
-        photo: "https://randomuser.me/api/portraits/lego/1.jpg",
+        photo: null,
         phone: "",
         location: "",
         website: "",
@@ -185,7 +171,7 @@ function Profile() {
     }
 
     console.log('Using user data from userProfile:', targetUser);
-    
+
     // Return complete user data with fallbacks
     const userData = {
       firstName: targetUser.firstName || "",
@@ -195,7 +181,7 @@ function Profile() {
       role: targetUser.role || "User",
       bio: targetUser.bio || "No bio available",
       skills: Array.isArray(targetUser.skills) ? targetUser.skills : [],
-      photo: targetUser.photo || "https://randomuser.me/api/portraits/lego/1.jpg",
+      photo: targetUser.photo,
       phone: targetUser.phone || "",
       location: targetUser.location || "",
       website: targetUser.website || "",
@@ -204,7 +190,7 @@ function Profile() {
       joinedDate: targetUser.createdAt || targetUser.joinedDate || new Date().toISOString(),
       socialLinks: targetUser.socialLinks || {}
     };
-    
+
     console.log('Processed user data:', userData);
     return userData;
   };
@@ -312,7 +298,7 @@ function Profile() {
                 {isDropdownOpen && (
                   <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 z-10">
                     <button
-                      onClick={() => navigate('/settings')}
+                      onClick={() => navigate('/biography')}
                       className="flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 w-full text-left"
                     >
                       <FiSettings className="mr-2" /> Settings
@@ -365,7 +351,7 @@ function Profile() {
                     />
                     {isOwnProfile && (
                       <button
-                        onClick={() => navigate('/settings')}
+                        onClick={() => navigate('/biography')}
                         className="absolute -bottom-2 -right-2 bg-blue-600 hover:bg-blue-700 text-white p-2.5 rounded-full shadow-lg transform transition-all duration-200 hover:scale-110 hover:shadow-xl flex items-center justify-center"
                         title="Edit profile"
                       >
@@ -399,7 +385,7 @@ function Profile() {
                     {isOwnProfile ? (
                       <div className="mt-4 sm:mt-0">
                         <button
-                          onClick={() => navigate('/settings')}
+                          onClick={() => navigate('/biography')}
                           className="inline-flex items-center px-4 py-2.5 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200"
                         >
                           <FiEdit className="mr-2 h-4 w-4" />

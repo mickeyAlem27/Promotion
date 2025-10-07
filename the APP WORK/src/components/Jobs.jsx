@@ -222,8 +222,29 @@ const Jobs = () => {
                     {job.postedBy && (
                       <div className="border-t border-gray-700 pt-4 mb-4">
                         <div className="flex items-center">
-                          <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-semibold text-sm mr-3">
-                            {job.postedBy.firstName?.charAt(0)}{job.postedBy.lastName?.charAt(0)}
+                          <div className="relative mr-3">
+                            {job.postedBy.photo ? (
+                              <img
+                                src={`http://localhost:5000${job.postedBy.photo}`}
+                                alt={`${job.postedBy.firstName} ${job.postedBy.lastName}`}
+                                className="w-8 h-8 rounded-full object-cover border-2 border-gray-600"
+                                onError={(e) => {
+                                  e.target.style.display = 'none';
+                                  e.target.nextSibling.style.display = 'flex';
+                                }}
+                              />
+                            ) : null}
+                            <div
+                              className={`w-8 h-8 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-white font-semibold text-sm ${
+                                job.postedBy.photo ? 'hidden' : 'flex'
+                              }`}
+                              style={{
+                                background: job.postedBy.photo ? 'transparent' : undefined,
+                                display: job.postedBy.photo ? 'none' : 'flex'
+                              }}
+                            >
+                              {job.postedBy.firstName?.charAt(0)}{job.postedBy.lastName?.charAt(0)}
+                            </div>
                           </div>
                           <div>
                             <p className="text-sm font-medium text-white">

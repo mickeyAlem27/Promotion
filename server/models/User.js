@@ -42,9 +42,26 @@ const userSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  phone: {
+    type: String,
+    trim: true
+  },
+  location: {
+    type: String,
+    trim: true
+  },
+  company: {
+    type: String,
+    trim: true
+  },
+  jobTitle: {
+    type: String,
+    trim: true
+  },
   photo: {
     type: String,
-    default: ''
+    trim: true,
+    default: null
   },
   isVerified: {
     type: Boolean,

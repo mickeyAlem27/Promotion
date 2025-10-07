@@ -59,6 +59,22 @@ const upload = multer({
 // Serve uploaded files statically (before CORS to avoid blocking static files)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// Add CORS headers specifically for uploaded files
+app.use('/uploads', (req, res, next) => {
+  const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',')
+    : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174', 'http://localhost:5176'];
+
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  next();
+});
+
 // CORS configuration
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
@@ -241,9 +257,9 @@ const setupCollections = async (conn) => {
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
-app.use('/api/messages', require('./routes/messageRoutes'));
-app.use('/api/posts', require('./routes/postRoutes'));
 app.use('/api/jobs', require('./routes/jobRoutes'));
+app.use('/api/posts', require('./routes/postRoutes'));
+app.use('/api/messages', require('./routes/messageRoutes'));
 
 // File upload route
 app.post('/api/upload', upload.single('file'), (req, res) => {
@@ -333,18 +349,21 @@ app.use((err, req, res, next) => {
 // Main server startup function
 const startServer = async () => {
   try {
-    // First connect to MongoDB
-    await connectWithRetry();
-    
+    // Skip MongoDB connection for now to test basic server functionality
+    console.log('🚀 Starting server...');
+    console.log('⚠️  Note: MongoDB connection will be attempted but server will continue if it fails');
+
     // Port configuration
     const PORT = parseInt(process.env.PORT, 10) || 5000;
     const HOST = '0.0.0.0';
-    
+
     // Start the HTTP server
     const server = app.listen(PORT, HOST, () => {
       console.log(`🚀 Server running in ${process.env.NODE_ENV} mode on http://${HOST}:${PORT}`);
+      console.log('✅ Server started successfully!');
+      console.log('📝 Note: Some features may not work without MongoDB connection');
     });
-    
+
     // Handle server errors
     server.on('error', (error) => {
       if (error.code === 'EADDRINUSE') {
@@ -354,45 +373,54 @@ const startServer = async () => {
       }
       process.exit(1);
     });
-    
+
     // Handle process termination
     const shutdown = async () => {
       console.log('\n🛑 Shutting down server...');
-      
+
       // Close HTTP server
       server.close(async () => {
         console.log('✅ HTTP server stopped');
-        
-        // Close MongoDB connection
+
+        // Close MongoDB connection if it exists
         try {
-          await mongoose.connection.close();
-          console.log('✅ MongoDB connection closed');
+          if (mongoose.connection.readyState !== 0) {
+            await mongoose.connection.close();
+            console.log('✅ MongoDB connection closed');
+          }
           process.exit(0);
         } catch (err) {
           console.error('❌ Error closing MongoDB connection:', err.message);
           process.exit(1);
         }
       });
-      
+
       // Force close after 10 seconds
       setTimeout(() => {
         console.error('⚠️  Could not close connections in time, forcefully shutting down');
         process.exit(1);
       }, 10000);
     };
-    
+
     // Handle process termination signals
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
-    
+
     // Handle unhandled promise rejections
     process.on('unhandledRejection', (err) => {
       console.error(`Unhandled Rejection: ${err.message}`);
       server.close(() => process.exit(1));
     });
-    
+
+    // Try to connect to MongoDB in the background
+    connectWithRetry().catch(error => {
+      console.warn('⚠️  MongoDB connection failed, but server will continue running');
+      console.warn('Some features (like authentication) may not work properly');
+      console.warn('To fix this, please check your MongoDB connection string in .env');
+    });
+
     return server;
-    
+
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);

@@ -185,7 +185,7 @@ function Home() {
             id: u._id,
             name: `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'User',
             role: u.role || 'User',
-            avatar: u.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent((u.firstName || '') + ' ' + (u.lastName || ''))}&background=1f2937&color=fff`
+            avatar: u.photo ? `http://localhost:5000${u.photo}` : `https://ui-avatars.com/api/?name=${encodeURIComponent((u.firstName || '') + ' ' + (u.lastName || ''))}&background=1f2937&color=fff`
           }));
 
         console.log('📋 Featured creators:', creators.length);
@@ -209,7 +209,7 @@ function Home() {
       const name = `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || 'User';
       setUserProfile({
         id: userData._id || userData.id || 'current-user',
-        avatar: userData.photo || 'https://randomuser.me/api/portraits/lego/1.jpg',
+        avatar: userData.photo ? `http://localhost:5000${userData.photo}` : `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=1f2937&color=fff`,
         bio: userData.bio || 'No bio available',
         skills: userData.skills || [],
         role: userData.role || 'User',
@@ -476,7 +476,7 @@ function Home() {
                       aria-label={`View ${job.user?.name || 'Employer'}'s profile`}
                     >
                       <img
-                        src={job.user?.photo || job.user?.avatar || 'https://randomuser.me/api/portraits/lego/1.jpg'}
+                        src={job.user?.photo ? `http://localhost:5000${job.user.photo}` : (job.user?.avatar || 'https://randomuser.me/api/portraits/lego/1.jpg')}
                         alt={job.user?.name || 'Employer'}
                         className="w-12 h-12 rounded-full border-2 border-teal-400/50"
                         onError={(e) => {

@@ -179,6 +179,19 @@ export const authAPI = {
     }
   },
   
+  // Update current user profile
+  updateProfile: async (profileData) => {
+    try {
+      console.log('Updating user profile:', profileData);
+      const response = await api.put('/auth/profile', profileData);
+      console.log('Profile updated successfully:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      throw new Error(error.response?.data?.message || 'Failed to update profile');
+    }
+  },
+  
   // Logout user
   logout: async () => {
     try {
