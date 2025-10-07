@@ -290,30 +290,52 @@ function Profile() {
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                  className="flex items-center space-x-2 focus:outline-none p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
+                  className="flex items-center space-x-2 focus:outline-none p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors duration-200"
+                  aria-label="Toggle settings menu"
                 >
                   <FiSettings className="w-5 h-5" />
                 </button>
 
                 {isDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 z-10">
+                  <div className="absolute right-0 mt-2 w-56 bg-gray-800/90 backdrop-blur-md rounded-lg shadow-xl border border-gray-700 overflow-hidden">
                     <button
                       onClick={() => navigate('/biography')}
-                      className="flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 w-full text-left"
+                      className="w-full px-4 py-3 text-left text-gray-200 hover:bg-gray-700/80 transition-colors duration-200 flex items-center"
+                      aria-label="Go to settings"
                     >
-                      <FiSettings className="mr-2" /> Settings
+                      <FiSettings className="w-5 h-5 mr-3" />
+                      <span>Settings</span>
                     </button>
                     <button
-                      onClick={() => setDarkMode(!darkMode)}
-                      className="flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 w-full text-left"
+                      onClick={() => {
+                        setDarkMode(!darkMode);
+                        setIsDropdownOpen(false);
+                      }}
+                      className="w-full px-4 py-3 text-left text-gray-200 hover:bg-gray-700/80 transition-colors duration-200 flex items-center"
+                      aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
                     >
-                      <FiMoon className="mr-2" /> {darkMode ? 'Light' : 'Dark'} Mode
+                      {darkMode ? (
+                        <>
+                          <FiSun className="w-5 h-5 mr-3" />
+                          <span>Light Mode</span>
+                        </>
+                      ) : (
+                        <>
+                          <FiMoon className="w-5 h-5 mr-3" />
+                          <span>Dark Mode</span>
+                        </>
+                      )}
                     </button>
                     <button
-                      onClick={handleLogout}
-                      className="flex items-center px-4 py-2 text-sm text-red-600 hover:bg-gray-100 dark:hover:bg-gray-700 w-full text-left"
+                      onClick={() => {
+                        handleLogout();
+                        setIsDropdownOpen(false);
+                      }}
+                      className="w-full px-4 py-3 text-left text-red-400 hover:bg-gray-700/80 transition-colors duration-200 flex items-center"
+                      aria-label="Log out"
                     >
-                      <FiLogOut className="mr-2" /> Logout
+                      <FiLogOut className="w-5 h-5 mr-3" />
+                      <span>Log Out</span>
                     </button>
                   </div>
                 )}

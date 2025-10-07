@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext'; // Assuming this is your auth context
 import { postsAPI, jobsAPI } from '../services/api';
 import api from '../services/api';
+import assets from '../assets/assets';
 import {
   FiSettings,
   FiLogOut,
@@ -277,7 +278,7 @@ function Home() {
         className="fixed inset-0 w-full h-full object-cover z-0"
         poster="https://placehold.co/1920x1080/1f2937/ffffff?text=Background+Video"
       >
-        <source src="https://www.w3schools.com/html/mov_bbb.mp4" type="video/mp4" />
+        <source src={assets.smoke} type="video/mp4" />
         Your browser does not support the video tag.
       </video>
       <div className="fixed inset-0 bg-gradient-to-br from-gray-900/90 via-gray-900/70 to-gray-900/90"></div>
@@ -295,7 +296,21 @@ function Home() {
         {isSettingsOpen && (
           <div className="absolute right-0 mt-2 w-56 bg-gray-800/90 backdrop-blur-md rounded-lg shadow-xl border border-gray-700 overflow-hidden">
             <button
-              onClick={toggleDarkMode}
+              onClick={() => {
+                navigate('/biography');
+                setIsSettingsOpen(false);
+              }}
+              className="w-full px-4 py-3 text-left text-gray-200 hover:bg-gray-700/80 transition-colors duration-200 flex items-center"
+              aria-label="Go to profile settings"
+            >
+              <FiSettings className="w-5 h-5 mr-3" />
+              <span>Settings</span>
+            </button>
+            <button
+              onClick={() => {
+                toggleDarkMode();
+                setIsSettingsOpen(false);
+              }}
               className="w-full px-4 py-3 text-left text-gray-200 hover:bg-gray-700/80 transition-colors duration-200 flex items-center"
               aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
             >
@@ -312,7 +327,10 @@ function Home() {
               )}
             </button>
             <button
-              onClick={handleLogout}
+              onClick={() => {
+                handleLogout();
+                setIsSettingsOpen(false);
+              }}
               className="w-full px-4 py-3 text-left text-red-400 hover:bg-gray-700/80 transition-colors duration-200 flex items-center"
               aria-label="Log out"
             >
