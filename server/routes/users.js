@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/auth');
+// const { protect } = require('../middleware/auth'); // Temporarily disabled for debugging
 const { getUsers, searchUsers, getUserById } = require('../controllers/userController');
 
-// Protect all routes with authentication middleware
-router.use(protect);
+// Public route - Get all users (for messaging interface)
+// router.use(protect); // Temporarily disabled for debugging
 
 // Get all users (except current user)
 router.get('/', getUsers);

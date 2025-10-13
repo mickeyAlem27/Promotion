@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
 
 const API_URL = 'http://localhost:5000/api';
 
@@ -60,7 +59,7 @@ api.interceptors.response.use(
     } catch (error) {
       // If refresh fails, logout user
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      // Don't redirect here, let the component handle it
       return Promise.reject(error);
     }
   }

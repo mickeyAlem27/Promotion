@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const ErrorResponse = require('../utils/errorResponse');
 const User = require('../models/User');
 
@@ -26,9 +27,17 @@ exports.protect = async (req, res, next) => {
   try {
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Check if MongoDB is connected before querying User model
+    if (mongoose.connection.readyState !== 1) {
+      console.warn('⚠️ MongoDB not connected, cannot verify user for protected route');
+      return next(new ErrorResponse('Database not available', 503));
+    }
+
     req.user = await User.findById(decoded.id);
     next();
   } catch (err) {
+    console.error('Authentication error:', err.message);
     return next(new ErrorResponse('Not authorized to access this route', 401));
   }
 };

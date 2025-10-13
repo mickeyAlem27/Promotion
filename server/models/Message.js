@@ -9,26 +9,19 @@ const messageSchema = new mongoose.Schema({
   participants: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
-    validate: {
-      validator: function(participants) {
-        // Ensure unique participants and at least 2 participants
-        return new Set(participants).size === participants.length && participants.length >= 2;
-      },
-      message: 'Conversation must have at least 2 unique participants'
-    }
+    required: true
   }],
   
   // Message content
   sender: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: false
   },
   recipient: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: false
   },
   content: {
     type: String,
@@ -63,7 +56,19 @@ const messageSchema = new mongoose.Schema({
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  toObject: { virtuals: true },
+  validate: {
+    validator: function(doc) {
+      // Ensure at least 2 unique participants
+      if (!doc.participants || doc.participants.length < 2) {
+        return false;
+      }
+      // Check for uniqueness
+      const uniqueIds = new Set(doc.participants.map(id => id.toString()));
+      return uniqueIds.size === doc.participants.length;
+    },
+    message: 'Conversation must have at least 2 unique participants'
+  }
 });
 
 // Virtual for thread messages (replies to a message)

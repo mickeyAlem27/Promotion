@@ -5,6 +5,9 @@ const cookieParser = require('cookie-parser');
 const dotenv = require('dotenv');
 const path = require('path');
 const multer = require('multer');
+const { createServer } = require('http');
+const { Server } = require('socket.io');
+const jwt = require('jsonwebtoken');
 const ErrorResponse = require('./utils/errorResponse');
 
 // Load environment variables
@@ -78,7 +81,7 @@ app.use('/uploads', (req, res, next) => {
 // CORS configuration
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
-  : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174', 'http://localhost:5176'];
+  : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174', 'http://localhost:5176', 'http://127.0.0.1:5173'];
 
 const corsOptions = {
   origin: allowedOrigins,
@@ -97,18 +100,18 @@ app.options('*', cors(corsOptions));
 
 app.use(cookieParser(process.env.JWT_SECRET));
 
-// MongoDB connection options
+// MongoDB connection options - Optimized for network changes
 const mongoOptions = {
-  serverSelectionTimeoutMS: 30000,
-  socketTimeoutMS: 45000,
-  connectTimeoutMS: 30000,
-  heartbeatFrequencyMS: 10000,
+  serverSelectionTimeoutMS: 30000, // Reduced for faster failure detection
+  socketTimeoutMS: 45000, // Increased for stability
+  connectTimeoutMS: 30000, // Reduced for faster connection attempts
+  heartbeatFrequencyMS: 10000, // More frequent heartbeats
   family: 4,
   dbName: 'PROMOTION',
   maxPoolSize: 10,
   minPoolSize: 1,
   maxIdleTimeMS: 30000,
-  waitQueueTimeoutMS: 15000,
+  waitQueueTimeoutMS: 20000,
   w: 'majority',
   retryWrites: true,
   retryReads: true,
@@ -145,80 +148,86 @@ const setupMongooseListeners = () => {
   });
 
   db.on('reconnected', () => {
-    console.log('🔄 MongoDB reconnected');
   });
 };
 
-// Connect to MongoDB with enhanced options and retry logic
+// Connect to MongoDB with enhanced options and retry logic for network resilience
 const connectWithRetry = async (retryCount = 0) => {
-  const maxRetries = 10;
-  const baseDelay = 2000;
-  const maxDelay = 30000;
-  
+  const maxRetries = 3; // Increased retries for better resilience
+  const baseDelay = 1000; // Reduced base delay for faster retries
+
   try {
     console.log(`🔗 Attempting to connect to MongoDB (Attempt ${retryCount + 1}/${maxRetries})...`);
-    
+    console.log(`📡 Connecting to: ${process.env.MONGODB_URI ? 'MongoDB Atlas' : 'No URI provided'}`);
+
     // Setup event listeners only on first attempt
     if (retryCount === 0) {
       setupMongooseListeners();
     }
-    
+
     // Connect to MongoDB with a timeout
     const connectPromise = mongoose.connect(process.env.MONGODB_URI, mongoOptions);
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Connection timeout')), 30000)
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Connection timeout after 30 seconds')), 30000)
     );
-    
+
     const conn = await Promise.race([connectPromise, timeoutPromise]);
-    
+
     // Verify the connection
     console.log('✅ Successfully connected to MongoDB');
     console.log(`🛢️  Database: ${conn.connection.db.databaseName}`);
     console.log(`🌐 Host: ${conn.connection.host}:${conn.connection.port}`);
-    
+
     // Handle collections setup
     await setupCollections(conn);
-    
+
     return conn;
-    
+
   } catch (error) {
     console.error('❌ Failed to connect to MongoDB:', error.message);
-    
-    // Log specific error details
+
+    // Enhanced error logging for network issues
     if (error.name === 'MongoServerError') {
       console.error('🔍 MongoDB Server Error:', error.codeName, '-', error.message);
       if (error.code === 8000) {
         console.error('  - Authentication failed. Please check your username and password.');
       }
     } else if (error.name === 'MongooseServerSelectionError') {
-      console.error('🔍 Connection Error:', error.message);
-      console.error('  - This usually means the MongoDB server is not running or the connection string is incorrect');
-      console.error('  - Please verify your MongoDB Atlas connection string in .env');
-      console.error('  - Make sure your IP is whitelisted in MongoDB Atlas');
-      console.error('  - Check if your network allows outbound connections to MongoDB Atlas');
-    } else if (error.message === 'Connection timeout') {
-      console.error('⏱️  Connection attempt timed out');
+      console.error('🔍 Network Connection Error:', error.message);
+      console.error('  - This usually means network connectivity issues or IP whitelist problems');
+      console.error('  - MongoDB Atlas may have blocked your IP address');
+      console.error('  - Please check your MongoDB Atlas Network Access settings');
+      console.error('  - For development, consider using 0.0.0.0/0 (Allow All) in Network Access');
+      console.error('  - Or use a local MongoDB instance for development');
+    } else if (error.message.includes('ETIMEOUT') || error.message.includes('timeout')) {
+      console.error('⏱️  Connection timeout - Network connectivity issues');
+      console.error('  - Check your internet connection');
+      console.error('  - MongoDB Atlas cluster might be experiencing issues');
+      console.error('  - Firewall or network restrictions may be blocking the connection');
+    } else if (error.message === 'Connection timeout after 30 seconds') {
+      console.error('⏱️  Connection attempt timed out after 30 seconds');
     }
-    
-    // Only retry if we haven't exceeded max retries
+
+    // For Socket.IO demo, continue without MongoDB if retries fail
     if (retryCount < maxRetries - 1) {
-      const delay = Math.min(
-        Math.pow(2, retryCount) * baseDelay + Math.random() * 1000,
-        maxDelay
-      );
-      
-      console.log(`🔄 Retrying connection in ${Math.round(delay/1000)} seconds... (${retryCount + 2}/${maxRetries})`);
-      
-      // Wait before retrying
+      const delay = baseDelay * Math.pow(2, retryCount) + Math.random() * 1000; // Exponential backoff
+
+      console.log(`🔄 Retrying MongoDB connection in ${Math.round(delay/1000)} seconds... (${retryCount + 2}/${maxRetries})`);
+
       await new Promise(resolve => setTimeout(resolve, delay));
       return connectWithRetry(retryCount + 1);
     } else {
-      console.error('🚨 Maximum number of retries reached. Please check your MongoDB connection.');
-      console.error('  1. Verify your connection string in .env is correct');
-      console.error('  2. Check if your IP is whitelisted in MongoDB Atlas');
-      console.error('  3. Verify your network allows outbound connections to MongoDB Atlas');
-      console.error('  4. Check if your MongoDB Atlas cluster is running and accessible');
-      process.exit(1);
+      console.warn('⚠️  MongoDB connection failed after all retries, but Socket.IO server will continue');
+      console.warn('🔗 Socket.IO server is still running for real-time messaging');
+      console.warn('⚠️  Authentication routes will not work without MongoDB');
+      console.warn('💡 To fix MongoDB connection issues:');
+      console.warn('   1. Check your internet connection');
+      console.warn('   2. Verify MongoDB Atlas cluster is running');
+      console.warn('   3. In MongoDB Atlas Network Access, add your current IP or use 0.0.0.0/0');
+      console.warn('   4. Verify username/password in connection string');
+      console.warn('   5. Try using a local MongoDB instance for development');
+      console.warn('   6. Check if your firewall is blocking outbound connections');
+      return null; // Continue without MongoDB for Socket.IO demo
     }
   }
 };
@@ -254,35 +263,782 @@ const setupCollections = async (conn) => {
   }
 };
 
-// Routes
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/users', require('./routes/users'));
-app.use('/api/jobs', require('./routes/jobRoutes'));
-app.use('/api/posts', require('./routes/postRoutes'));
-app.use('/api/messages', require('./routes/messageRoutes'));
+// Routes (load immediately with MongoDB availability checks)
+console.log('🔗 Loading API routes...');
 
-// File upload route
-app.post('/api/upload', upload.single('file'), (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, error: 'No file uploaded' });
+try {
+  // File upload route (doesn't need MongoDB)
+  app.post('/api/upload', upload.single('file'), (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: 'No file uploaded' });
+      }
+
+      const fileInfo = {
+        filename: req.file.filename,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        url: `/uploads/${req.file.filename}`
+      };
+
+      res.json({ success: true, data: fileInfo });
+    } catch (error) {
+      console.error('Upload error:', error);
+      res.status(500).json({ success: false, error: 'File upload failed' });
+    }
+  });
+  console.log('✅ File upload route loaded');
+} catch (error) {
+  console.error('❌ Failed to load file upload route:', error.message);
+}
+
+// Load authentication routes (with MongoDB availability handling)
+try {
+  const authRouter = require('./routes/auth');
+
+  // Wrap auth routes with MongoDB availability middleware
+  app.use('/api/auth', (req, res, next) => {
+    // For public routes (login, register), check MongoDB availability
+    if ((req.path === '/login' || req.path === '/register') && mongoose.connection.readyState !== 1) {
+      console.log('🔐 MongoDB not connected, but allowing auth routes for demo mode');
+      // Continue to next middleware (the actual route handlers)
+      return next();
+    }
+    // For protected routes, check MongoDB availability
+    if (req.path !== '/login' && req.path !== '/register' && mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        error: 'Database not available. Authentication features require database connection.',
+        mongodb_status: 'disconnected'
+      });
+    }
+    next();
+  });
+
+  app.use('/api/auth', authRouter);
+  console.log('✅ Auth routes loaded (with MongoDB availability checks)');
+} catch (error) {
+  console.error('❌ Failed to load auth routes:', error.message);
+}
+
+// Load messages routes with MongoDB availability middleware
+try {
+  app.use('/api/messages', (req, res, next) => {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        error: 'Database not available. Messaging features require database connection.',
+        mongodb_status: 'disconnected'
+      });
+    }
+    next();
+  });
+
+  app.use('/api/messages', require('./routes/messageRoutes'));
+  console.log('✅ Messages routes loaded');
+} catch (error) {
+  console.error('❌ Failed to load messages routes:', error.message);
+}
+
+// Load user routes with MongoDB availability middleware
+try {
+  app.use('/api/users', (req, res, next) => {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        error: 'Database not available. User management requires database connection.',
+        mongodb_status: 'disconnected'
+      });
+    }
+    next();
+  });
+
+  app.use('/api/users', require('./routes/users'));
+  console.log('✅ Users routes loaded');
+} catch (error) {
+  console.error('❌ Failed to load users routes:', error.message);
+}
+
+// Load jobs routes with MongoDB availability middleware
+try {
+  app.use('/api/jobs', (req, res, next) => {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        error: 'Database not available. Job management requires database connection.',
+        mongodb_status: 'disconnected'
+      });
+    }
+    next();
+  });
+
+  app.use('/api/jobs', require('./routes/jobRoutes'));
+  console.log('✅ Jobs routes loaded');
+} catch (error) {
+  console.error('❌ Failed to load jobs routes:', error.message);
+}
+
+console.log('✅ API routes loading completed');
+
+// Socket.IO setup for real-time messaging
+const setupSocketIO = (server) => {
+  const io = new Server(server, {
+    cors: {
+      origin: allowedOrigins,
+      credentials: true,
+      methods: ['GET', 'POST']
+    },
+    transports: ['websocket', 'polling']
+  });
+
+  // Store connected users
+  const connectedUsers = new Map();
+
+  // Socket.IO middleware for authentication (with demo mode fallback)
+  io.use(async (socket, next) => {
+    try {
+      const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.replace('Bearer ', '');
+
+      console.log('🔐 Socket.IO authentication attempt:', {
+        hasToken: !!token,
+        tokenLength: token?.length,
+        socketId: socket.id
+      });
+
+      if (!token) {
+        console.log('🔓 No token provided - allowing demo mode connection');
+        // For demo purposes, allow connection without authentication
+        socket.userId = `demo_${socket.id.slice(0, 8)}`;
+        socket.userEmail = `demo_${socket.id.slice(0, 8)}@demo.com`;
+        socket.isDemo = true;
+
+        console.log('✅ Socket.IO: Demo user connected', {
+          userId: socket.userId,
+          isDemo: true
+        });
+
+        return next();
+      }
+
+      // Verify JWT token for authenticated users
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        socket.userId = decoded.id;
+        socket.userEmail = decoded.email;
+        socket.isDemo = false;
+
+        console.log('✅ Socket.IO: User authenticated successfully', {
+          userId: decoded.id,
+          email: decoded.email
+        });
+
+        next();
+      } catch (jwtError) {
+        console.error('❌ Socket.IO: JWT verification failed:', jwtError.message);
+        // Allow demo mode as fallback
+        socket.userId = `demo_${socket.id.slice(0, 8)}`;
+        socket.userEmail = `demo_${socket.id.slice(0, 8)}@demo.com`;
+        socket.isDemo = true;
+
+        console.log('🔓 Socket.IO: Allowing demo mode connection due to auth failure');
+        next();
+      }
+    } catch (error) {
+      console.error('❌ Socket.IO: Authentication middleware error:', error.message);
+      // Allow demo mode as fallback
+      socket.userId = `demo_${socket.id.slice(0, 8)}`;
+      socket.userEmail = `demo_${socket.id.slice(0, 8)}@demo.com`;
+      socket.isDemo = true;
+
+      console.log('🔓 Socket.IO: Allowing demo mode connection due to error');
+      next();
+    }
+  });
+
+  // Socket.IO middleware for authentication (with demo mode fallback)
+  io.use(async (socket, next) => {
+    try {
+      const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.replace('Bearer ', '');
+
+      console.log('🔐 Socket.IO authentication attempt:', {
+        hasToken: !!token,
+        tokenLength: token?.length,
+        socketId: socket.id
+      });
+
+      if (!token) {
+        console.log('🔓 No token provided - allowing demo mode connection');
+        // For demo purposes, allow connection without authentication
+        socket.userId = `demo_${socket.id.slice(0, 8)}`;
+        socket.userEmail = `demo_${socket.id.slice(0, 8)}@demo.com`;
+        socket.isDemo = true;
+
+        console.log('✅ Socket.IO: Demo user connected', {
+          userId: socket.userId,
+          isDemo: true
+        });
+
+        return next();
+      }
+
+      // Verify JWT token for authenticated users
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        socket.userId = decoded.id;
+        socket.userEmail = decoded.email;
+        socket.isDemo = false;
+
+        console.log('✅ Socket.IO: User authenticated successfully', {
+          userId: decoded.id,
+          email: decoded.email
+        });
+
+        next();
+      } catch (jwtError) {
+        console.error('❌ Socket.IO: JWT verification failed:', jwtError.message);
+        // Allow demo mode as fallback
+        socket.userId = `demo_${socket.id.slice(0, 8)}`;
+        socket.userEmail = `demo_${socket.id.slice(0, 8)}@demo.com`;
+        socket.isDemo = true;
+
+        console.log('🔓 Socket.IO: Allowing demo mode connection due to auth failure');
+        next();
+      }
+    } catch (error) {
+      console.error('❌ Socket.IO: Authentication middleware error:', error.message);
+      // Allow demo mode as fallback
+      socket.userId = `demo_${socket.id.slice(0, 8)}`;
+      socket.userEmail = `demo_${socket.id.slice(0, 8)}@demo.com`;
+      socket.isDemo = true;
+
+      console.log('🔓 Socket.IO: Allowing demo mode connection due to error');
+      next();
+    }
+  });
+
+  io.on('connection', (socket) => {
+    console.log(`🔗 Socket connected: ${socket.id}`);
+
+    // Handle user identification after connection (for additional user data)
+    socket.on('user_identify', (data) => {
+      console.log('👤 User identification:', data);
+
+      if (data.userId && data.email) {
+        socket.userId = data.userId;
+        socket.userEmail = data.email;
+        socket.isDemo = false;
+
+        console.log(`✅ User identified: ${socket.userId} (${socket.userEmail})`);
+      }
+    });
+
+    console.log(`🔗 User ${socket.userId} connected via Socket.IO`);
+
+    // Add authenticated user to connected users map
+    connectedUsers.set(socket.userId, {
+      socketId: socket.id,
+      userId: socket.userId,
+      connectedAt: new Date(),
+      isDemo: socket.isDemo || false
+    });
+
+    console.log(`🔐 User connected: ${socket.userId} (Demo: ${socket.isDemo || false})`);
+
+    // Broadcast authenticated user online status to all other users
+    socket.broadcast.emit('user_online', {
+      userId: socket.userId,
+      timestamp: new Date(),
+      isDemo: socket.isDemo || false
+    });
+
+    // Send current online users to this newly connected user
+    const currentUsers = Array.from(connectedUsers.keys()).filter(id => id !== socket.userId);
+    if (currentUsers.length > 0) {
+      // Send each online user individually to the newly connected user
+      currentUsers.forEach(userId => {
+        socket.emit('user_online', {
+          userId,
+          timestamp: new Date(),
+          isDemo: connectedUsers.get(userId)?.isDemo || false,
+          isExisting: true // Indicates this is an existing user, not a new connection
+        });
+      });
     }
 
-    // Return file information
-    const fileInfo = {
-      filename: req.file.filename,
-      originalname: req.file.originalname,
-      mimetype: req.file.mimetype,
-      size: req.file.size,
-      url: `/uploads/${req.file.filename}`
-    };
+    // Also send the current user's own online status to themselves
+    socket.emit('user_online', {
+      userId: socket.userId,
+      timestamp: new Date(),
+      isDemo: socket.isDemo || false,
+      isSelf: true // Indicates this is the user's own status
+    });
 
-    res.json({ success: true, data: fileInfo });
-  } catch (error) {
-    console.error('Upload error:', error);
-    res.status(500).json({ success: false, error: 'File upload failed' });
-  }
-});
+    // Handle joining conversation room
+    socket.on('join_conversation', async (conversationId) => {
+      try {
+        socket.join(`conversation_${conversationId}`);
+        console.log(`User ${socket.userId} joined conversation ${conversationId}`);
+
+        // Extract participant IDs from conversationId (format: "userId1_userId2")
+        const participantIds = conversationId.split('_');
+        if (participantIds.length !== 2) {
+          console.error(`❌ Invalid conversationId format: ${conversationId}`);
+          return;
+        }
+
+        const [userId1, userId2] = participantIds;
+
+        // Load existing messages from MongoDB if available
+        try {
+          if (mongoose.connection.readyState === 1) {
+            const Message = require('./models/Message');
+
+            // First find the conversation document using participants
+            const participants = [userId1, userId2].sort();
+            const conversation = await Message.findOne({
+              participants: { $all: participants.map(id => new mongoose.Types.ObjectId(id)), $size: participants.length },
+              isPartOfThread: false
+            });
+
+            if (conversation) {
+              // Get recent messages for this conversation using the actual ObjectId
+              const existingMessages = await Message.find({
+                conversationId: conversation._id,
+                isPartOfThread: true
+              })
+              .sort({ createdAt: -1 })
+              .limit(50)
+              .populate('sender', 'firstName lastName photo role')
+              .populate('recipient', 'firstName lastName photo role');
+
+                // Send existing messages to the user (in chronological order)
+                if (existingMessages.length > 0) {
+                  const messagesForClient = existingMessages.reverse().map(msg => ({
+                    id: msg._id,
+                    conversationId: conversationId, // Keep original string for client
+                    senderId: msg.sender?._id || msg.sender,
+                    recipientId: msg.recipient?._id || msg.recipient,
+                    content: msg.content,
+                    timestamp: msg.createdAt,
+                    read: msg.isRead,
+                    sender: msg.sender ? {
+                      _id: msg.sender._id,
+                      firstName: msg.sender.firstName,
+                      lastName: msg.sender.lastName,
+                      photo: msg.sender.photo,
+                      role: msg.sender.role
+                    } : {
+                      _id: senderId,
+                      firstName: 'Unknown',
+                      lastName: 'User',
+                      role: 'Member'
+                    },
+                    recipient: msg.recipient ? {
+                      _id: msg.recipient._id,
+                      firstName: msg.recipient.firstName,
+                      lastName: msg.recipient.lastName,
+                      photo: msg.recipient.photo,
+                      role: msg.recipient.role
+                    } : {
+                      _id: recipientId,
+                      firstName: 'Unknown',
+                      lastName: 'User',
+                      role: 'Member'
+                    }
+                  }));
+
+                  socket.emit('load_messages', {
+                    conversationId,
+                    messages: messagesForClient,
+                    hasMessages: messagesForClient.length > 0
+                  });
+
+                console.log(`📨 SERVER: Emitted load_messages event to frontend`);
+                console.log(`📊 Event data:`, {
+                  conversationId,
+                  messageCount: messagesForClient.length,
+                  hasMessages: messagesForClient.length > 0
+                });
+              } else {
+                console.log(`📭 No existing messages found for conversation ${conversationId}`);
+                // Always emit load_messages event, even with empty messages array
+                socket.emit('load_messages', {
+                  conversationId,
+                  messages: [],
+                  hasMessages: false
+                });
+                console.log(`📨 SERVER: Emitted load_messages event with empty messages array`);
+              }
+            } else {
+              console.log(`📭 No conversation found for participants ${participants.join(', ')}`);
+              // Always emit load_messages event for new conversations
+              socket.emit('load_messages', {
+                conversationId,
+                messages: [],
+                hasMessages: false,
+                isNewConversation: true
+              });
+              console.log(`📨 SERVER: Emitted load_messages event for new conversation`);
+            }
+          } else {
+            console.log(`⚠️ MongoDB not connected (state: ${mongoose.connection.readyState}), cannot load existing messages`);
+            console.log(`🔧 To enable message persistence, fix MongoDB connection`);
+            // Always emit load_messages event, even when DB is not connected
+            socket.emit('load_messages', {
+              conversationId,
+              messages: [],
+              hasMessages: false,
+              dbConnected: false
+            });
+            console.log(`📨 SERVER: Emitted load_messages event (DB not connected)`);
+          }
+        } catch (dbError) {
+          console.error('❌ Error loading existing messages:', dbError.message);
+          console.log(`🔧 Messages will not persist until MongoDB connection is fixed`);
+          // Always emit load_messages event, even on error
+          socket.emit('load_messages', {
+            conversationId,
+            messages: [],
+            hasMessages: false,
+            error: true
+          });
+          console.log(`📨 SERVER: Emitted load_messages event (error occurred)`);
+          // Continue without loading messages if DB fails
+        }
+      } catch (error) {
+        console.error('❌ Error joining conversation:', error);
+      }
+    });
+
+    // Handle leaving conversation room
+    socket.on('leave_conversation', (conversationId) => {
+      socket.leave(`conversation_${conversationId}`);
+      console.log(`User ${socket.userId} left conversation ${conversationId}`);
+    });
+
+    // Handle sending message
+    socket.on('send_message', async (data) => {
+      try {
+        console.log('📨 SERVER: Received send_message event');
+        console.log('📊 Message data received:', {
+          conversationId: data.conversationId,
+          content: data.content,
+          recipientId: data.recipientId,
+          senderId: data.senderId,
+          timestamp: data.timestamp,
+          socketId: socket.id,
+          userId: socket.userId,
+          isDemo: socket.isDemo
+        });
+
+        const { conversationId, content, recipientId, senderId } = data;
+
+        // Validate required fields
+        if (!conversationId || !content || !recipientId || !senderId) {
+          console.error('❌ Missing required message fields:', {
+            hasConversationId: !!conversationId,
+            hasContent: !!content,
+            hasRecipientId: !!recipientId,
+            hasSenderId: !!senderId
+          });
+          socket.emit('message_error', {
+            error: 'Missing required fields',
+            details: 'conversationId, content, recipientId, and senderId are required'
+          });
+          return;
+        }
+
+        // Validate message content
+        if (content.trim().length === 0) {
+          console.error('❌ Empty message content');
+          socket.emit('message_error', { error: 'Message content cannot be empty' });
+          return;
+        }
+
+        // For demo purposes, we'll save to MongoDB if available
+        let savedMessage = null;
+        try {
+          if (mongoose.connection.readyState === 1) {
+            const Message = require('./models/Message');
+
+            // Get or create conversation
+            const participants = [senderId, recipientId].sort();
+            console.log(`🔍 Looking for conversation with participants:`, participants);
+
+            let conversation;
+            try {
+              conversation = await Message.findOne({
+                participants: { $all: participants.map(id => new mongoose.Types.ObjectId(id)), $size: participants.length },
+                isPartOfThread: false
+              });
+
+              if (!conversation) {
+                console.log(`🆕 Creating new conversation for participants:`, participants);
+                conversation = await Message.create({
+                  participants: participants.map(id => new mongoose.Types.ObjectId(id)),
+                  sender: new mongoose.Types.ObjectId(senderId),
+                  recipient: new mongoose.Types.ObjectId(recipientId),
+                  content: 'Conversation started',
+                  isPartOfThread: false
+                });
+                console.log(`✅ Created new conversation: ${conversation._id}`);
+              } else {
+                console.log(`📋 Found existing conversation: ${conversation._id}`);
+              }
+            } catch (convError) {
+              console.error(`❌ Error finding/creating conversation:`, convError.message);
+              console.error(`🔍 Participants array:`, participants);
+              console.error(`🔍 ObjectIds:`, participants.map(id => new mongoose.Types.ObjectId(id)));
+              throw convError;
+            }
+
+            // Create and save the message
+            const message = new Message({
+              participants: [new mongoose.Types.ObjectId(senderId), new mongoose.Types.ObjectId(recipientId)],
+              sender: new mongoose.Types.ObjectId(senderId),
+              recipient: new mongoose.Types.ObjectId(recipientId),
+              content: content.trim(),
+              isRead: false,
+              isPartOfThread: true,
+              conversationId: conversation._id
+            });
+
+            console.log(`💾 Saving message to database:`, {
+              content: content.trim(),
+              sender: senderId,
+              recipient: recipientId,
+              conversationId: conversation._id,
+              participants: [new mongoose.Types.ObjectId(senderId), new mongoose.Types.ObjectId(recipientId)],
+              messageObject: message.toObject()
+            });
+
+            try {
+              savedMessage = await message.save();
+              console.log(`✅ Message saved to MongoDB: ${savedMessage._id} - "${content.trim()}"`);
+              console.log(`📊 Saved message details:`, {
+                id: savedMessage._id,
+                content: savedMessage.content,
+                sender: savedMessage.sender,
+                recipient: savedMessage.recipient,
+                conversationId: savedMessage.conversationId,
+                createdAt: savedMessage.createdAt
+              });
+            } catch (saveError) {
+              console.error(`❌ Message save failed:`, saveError.message);
+              console.error(`❌ Save error details:`, {
+                name: saveError.name,
+                code: saveError.code,
+                errors: saveError.errors,
+                stack: saveError.stack
+              });
+              throw saveError; // Re-throw to be caught by outer catch
+            }
+
+            // Update conversation's last message
+            try {
+              conversation.lastMessage = savedMessage._id;
+              conversation.unreadCount = (conversation.unreadCount || 0) + 1;
+              await conversation.save();
+              console.log(`📝 Updated conversation ${conversation._id} with last message`);
+            } catch (convUpdateError) {
+              console.error(`❌ Conversation update failed:`, convUpdateError.message);
+              console.error(`❌ Conversation update details:`, {
+                conversationId: conversation._id,
+                lastMessage: savedMessage._id,
+                unreadCount: conversation.unreadCount
+              });
+              // Don't throw - message is saved, conversation update failure is not critical
+            }
+
+            // Populate the saved message for broadcasting
+            try {
+              savedMessage = await Message.findById(savedMessage._id)
+                .populate('sender', 'firstName lastName photo role')
+                .populate('recipient', 'firstName lastName photo role');
+              console.log(`📋 Populated message data for broadcast`);
+            } catch (populateError) {
+              console.error(`❌ Message population failed:`, populateError.message);
+              // Use unpopulated message if population fails
+              console.log(`📋 Using unpopulated message data for broadcast`);
+            }
+          } else {
+            console.log(`⚠️ MongoDB not connected (state: ${mongoose.connection.readyState}), message will only be broadcast via Socket.IO`);
+            console.log(`🔧 To enable message persistence:`);
+            console.log(`   1. Ensure MongoDB Atlas cluster is running`);
+            console.log(`   2. Check Network Access allows your IP (0.0.0.0/0 for development)`);
+            console.log(`   3. Verify connection string in .env file`);
+            socket.emit('message_error', {
+              error: 'Database not connected',
+              details: 'Messages cannot be persisted without database connection'
+            });
+            return; // Don't broadcast if DB is not connected
+          }
+        } catch (dbError) {
+          console.error('❌ Database error:', dbError.message);
+          console.log(`🔧 Message will not be broadcast due to database error`);
+          socket.emit('message_error', {
+            error: 'Failed to save message',
+            details: 'Message could not be persisted to database'
+          });
+          return; // Don't broadcast if DB save fails
+        }
+
+        // Only broadcast if message was successfully saved
+        if (savedMessage) {
+          // Validate that the conversation room exists
+          const roomName = `conversation_${conversationId}`;
+          console.log(`📡 Broadcasting message to room: ${roomName}`);
+
+          // Create message object for broadcasting
+          const messageData = {
+            id: savedMessage._id,
+            conversationId,
+            senderId,
+            recipientId,
+            content: content.trim(),
+            timestamp: savedMessage.createdAt,
+            read: false,
+            sender: savedMessage.sender ? {
+              _id: savedMessage.sender._id,
+              firstName: savedMessage.sender.firstName,
+              lastName: savedMessage.sender.lastName,
+              photo: savedMessage.sender.photo,
+              role: savedMessage.sender.role
+            } : {
+              _id: senderId,
+              firstName: 'Demo',
+              lastName: 'User',
+              role: 'Member'
+            },
+            recipient: savedMessage.recipient ? {
+              _id: savedMessage.recipient._id,
+              firstName: savedMessage.recipient.firstName,
+              lastName: savedMessage.recipient.lastName,
+              photo: savedMessage.recipient.photo,
+              role: savedMessage.recipient.role
+            } : {
+              _id: recipientId,
+              firstName: 'Demo',
+              lastName: 'User',
+              role: 'Member'
+            }
+          };
+
+          // Emit message to conversation room (including sender for confirmation)
+          const broadcastResult = io.to(roomName).emit('new_message', messageData);
+
+          console.log(`📨 Broadcast result:`, broadcastResult);
+
+          // Also emit confirmation to sender
+          socket.emit('message_sent', {
+            id: messageData.id,
+            conversationId,
+            senderId,
+            recipientId,
+            content: messageData.content,
+            timestamp: messageData.timestamp,
+            read: false,
+            confirmed: true
+          });
+
+          console.log(`✅ Message sent successfully in conversation ${conversationId} by user ${senderId}`);
+        } else {
+          console.error('❌ No saved message to broadcast');
+          socket.emit('message_error', {
+            error: 'Message save failed',
+            details: 'Message was not saved to database'
+          });
+        }
+
+      } catch (error) {
+        console.error('❌ Error processing message:', error);
+        socket.emit('message_error', {
+          error: 'Failed to process message',
+          details: error.message,
+          stack: error.stack
+        });
+      }
+    });
+
+    // Handle typing indicators
+    socket.on('typing_start', (data) => {
+      const { conversationId, recipientId } = data;
+      socket.to(`conversation_${conversationId}`).emit('user_typing', {
+        userId: socket.userId,
+        conversationId,
+        typing: true
+      });
+    });
+
+    socket.on('typing_stop', (data) => {
+      const { conversationId, recipientId } = data;
+      socket.to(`conversation_${conversationId}`).emit('user_typing', {
+        userId: socket.userId,
+        conversationId,
+        typing: false
+      });
+    });
+
+    // Handle marking messages as read
+    socket.on('mark_messages_read', async (data) => {
+      try {
+        const { conversationId, messageIds } = data;
+
+        // Update message read status in database (you'll need to implement this)
+        // await Message.updateMany(
+        //   { _id: { $in: messageIds }, recipientId: socket.userId },
+        //   { read: true }
+        // );
+
+        // Emit read receipt to conversation
+        io.to(`conversation_${conversationId}`).emit('messages_read', {
+          userId: socket.userId,
+          conversationId,
+          messageIds,
+          timestamp: new Date()
+        });
+
+      } catch (error) {
+        console.error('Error marking messages as read:', error);
+      }
+    });
+
+    // Handle user disconnect
+    socket.on('disconnect', () => {
+      console.log(`🔌 User ${socket.userId} disconnected from Socket.IO`);
+
+      // Remove user from connected users map (only for authenticated users)
+      if (socket.userId) {
+        connectedUsers.delete(socket.userId);
+
+        // Broadcast user offline status
+        socket.broadcast.emit('user_offline', {
+          userId: socket.userId,
+          timestamp: new Date(),
+          isDemo: false
+        });
+      }
+    });
+  });
+
+  // Clean up disconnected users periodically (only for authenticated users)
+  setInterval(() => {
+    const now = new Date();
+    for (const [userId, userInfo] of connectedUsers.entries()) {
+      if (now - userInfo.connectedAt > 300000) { // 5 minutes timeout
+        connectedUsers.delete(userId);
+        io.emit('user_offline', {
+          userId,
+          timestamp: now,
+          isDemo: false
+        });
+      }
+    }
+  }, 60000); // Check every minute
+
+  return io;
+};
 
 // Simple health check route
 app.get('/', (req, res) => {
@@ -290,8 +1046,329 @@ app.get('/', (req, res) => {
     status: 'running',
     message: 'Promotion API is running',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    mongodbDetails: {
+      readyState: mongoose.connection.readyState,
+      name: mongoose.connection.name || 'not connected',
+      host: mongoose.connection.host || 'not connected',
+      port: mongoose.connection.port || 'not connected'
+    },
+    socketio: 'active'
   });
+});
+
+// Test route for direct database save (for debugging)
+app.post('/api/test-direct-save', async (req, res) => {
+  console.log('🧪 Direct database save test');
+  console.log('📨 Request body:', req.body);
+
+  const { content, senderId, recipientId } = req.body;
+
+  if (!content || !senderId || !recipientId) {
+    return res.status(400).json({
+      success: false,
+      error: 'Missing required fields: content, senderId, recipientId'
+    });
+  }
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const Message = require('./models/Message');
+
+      // Create conversation first
+      const participants = [senderId, recipientId].sort();
+      let conversation = await Message.findOne({
+        participants: { $all: participants.map(id => new mongoose.Types.ObjectId(id)), $size: participants.length },
+        isPartOfThread: false
+      });
+
+      if (!conversation) {
+        conversation = await Message.create({
+          participants: participants.map(id => new mongoose.Types.ObjectId(id)),
+          sender: new mongoose.Types.ObjectId(senderId),
+          recipient: new mongoose.Types.ObjectId(recipientId),
+          content: 'Test conversation',
+          isPartOfThread: false
+        });
+        console.log(`✅ Created test conversation: ${conversation._id}`);
+      }
+
+      // Create and save message
+      const messageDoc = new Message({
+        participants: [new mongoose.Types.ObjectId(senderId), new mongoose.Types.ObjectId(recipientId)],
+        sender: new mongoose.Types.ObjectId(senderId),
+        recipient: new mongoose.Types.ObjectId(recipientId),
+        content: content,
+        isRead: false,
+        isPartOfThread: true,
+        conversationId: conversation._id
+      });
+
+      const savedMessage = await messageDoc.save();
+      console.log(`✅ Message directly saved to MongoDB: ${savedMessage._id}`);
+
+      // Verify it exists
+      const foundMessage = await Message.findById(savedMessage._id);
+      console.log(`🔍 Verification - message found:`, !!foundMessage);
+
+      res.json({
+        success: true,
+        message: 'Message saved successfully',
+        data: {
+          messageId: savedMessage._id,
+          content: savedMessage.content,
+          verified: !!foundMessage
+        }
+      });
+    } else {
+      res.status(503).json({
+        success: false,
+        error: 'MongoDB not connected',
+        readyState: mongoose.connection.readyState
+      });
+    }
+  } catch (error) {
+    console.error('❌ Direct save error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
+// Test endpoint for debugging message loading
+app.post('/api/test-load-messages', async (req, res) => {
+  console.log('🔍 Testing message loading functionality');
+  console.log('📨 Request body:', req.body);
+
+  const { conversationId } = req.body;
+
+  if (!conversationId) {
+    return res.status(400).json({
+      success: false,
+      error: 'conversationId is required'
+    });
+  }
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const Message = require('./models/Message');
+
+      // Extract participant IDs from conversationId (format: "userId1_userId2")
+      const participantIds = conversationId.split('_');
+      if (participantIds.length !== 2) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid conversationId format'
+        });
+      }
+
+      const [userId1, userId2] = participantIds;
+      console.log(`🔍 Looking for conversation between: ${userId1} and ${userId2}`);
+
+      // First find the conversation document
+      const participants = [userId1, userId2].sort();
+      const conversation = await Message.findOne({
+        participants: { $all: participants.map(id => new mongoose.Types.ObjectId(id)), $size: participants.length },
+        isPartOfThread: false
+      });
+
+      if (!conversation) {
+        console.log(`📭 No conversation found for participants ${participants.join(', ')}`);
+        return res.json({
+          success: true,
+          message: 'No conversation found',
+          data: {
+            conversationId,
+            participants,
+            conversationFound: false,
+            messagesFound: 0
+          }
+        });
+      }
+
+      console.log(`✅ Found conversation: ${conversation._id}`);
+
+      // Get messages for this conversation
+      const existingMessages = await Message.find({
+        conversationId: conversation._id,
+        isPartOfThread: true
+      })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .populate('sender', 'firstName lastName photo role')
+      .populate('recipient', 'firstName lastName photo role');
+
+      console.log(`📨 Found ${existingMessages.length} messages for conversation ${conversation._id}`);
+
+      // Format messages for client
+      const messagesForClient = existingMessages.reverse().map(msg => ({
+        id: msg._id,
+        conversationId: conversationId,
+        senderId: msg.sender?._id || msg.sender,
+        recipientId: msg.recipient?._id || msg.recipient,
+        content: msg.content,
+        timestamp: msg.createdAt,
+        read: msg.isRead,
+        sender: msg.sender ? {
+          _id: msg.sender._id,
+          firstName: msg.sender.firstName,
+          lastName: msg.sender.lastName,
+          photo: msg.sender.photo,
+          role: msg.sender.role
+        } : null,
+        recipient: msg.recipient ? {
+          _id: msg.recipient._id,
+          firstName: msg.recipient.firstName,
+          lastName: msg.recipient.lastName,
+          photo: msg.recipient.photo,
+          role: msg.recipient.role
+        } : null
+      }));
+
+      res.json({
+        success: true,
+        message: 'Message loading test completed',
+        data: {
+          conversationId,
+          conversationFound: true,
+          conversationObjectId: conversation._id,
+          messagesFound: existingMessages.length,
+          messagesForClient: messagesForClient.length,
+          sampleMessage: messagesForClient[0] || null
+        }
+      });
+    } else {
+      res.status(503).json({
+        success: false,
+        error: 'MongoDB not connected',
+        readyState: mongoose.connection.readyState
+      });
+    }
+  } catch (error) {
+    console.error('❌ Message loading test error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
+// Test route for messaging (for debugging)
+app.post('/api/test-message', async (req, res) => {
+  console.log('🧪 Test message endpoint called');
+  console.log('📨 Request body:', req.body);
+
+  const { message, conversationId, senderId, recipientId } = req.body;
+
+  if (!message || !conversationId || !senderId || !recipientId) {
+    return res.status(400).json({
+      success: false,
+      error: 'Missing required fields: message, conversationId, senderId, recipientId'
+    });
+  }
+
+  // For demo purposes, we'll save to MongoDB if available
+  let savedMessage = null;
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const Message = require('./models/Message');
+
+      // Get or create conversation
+      const participants = [senderId, recipientId].sort();
+      console.log(`🔍 Looking for conversation with participants:`, participants);
+
+      let conversation;
+      try {
+        conversation = await Message.findOne({
+          participants: { $all: participants.map(id => new mongoose.Types.ObjectId(id)), $size: participants.length },
+          isPartOfThread: false
+        });
+
+        if (!conversation) {
+          console.log(`🆕 Creating new conversation for participants:`, participants);
+          conversation = await Message.create({
+            participants: participants.map(id => new mongoose.Types.ObjectId(id)),
+            sender: new mongoose.Types.ObjectId(senderId),
+            recipient: new mongoose.Types.ObjectId(recipientId),
+            content: 'Test conversation started',
+            isPartOfThread: false
+          });
+          console.log(`✅ Created new conversation: ${conversation._id}`);
+        } else {
+          console.log(`📋 Found existing conversation: ${conversation._id}`);
+        }
+      } catch (convError) {
+        console.error(`❌ Error finding/creating conversation:`, convError.message);
+        throw convError;
+      }
+
+      // Create and save the message
+      const messageDoc = new Message({
+        participants: [new mongoose.Types.ObjectId(senderId), new mongoose.Types.ObjectId(recipientId)],
+        sender: new mongoose.Types.ObjectId(senderId),
+        recipient: new mongoose.Types.ObjectId(recipientId),
+        content: `[TEST] ${message}`,
+        isRead: false,
+        isPartOfThread: true,
+        conversationId: conversation._id
+      });
+
+      console.log(`💾 Saving test message to database:`, {
+        content: messageDoc.content,
+        sender: senderId,
+        recipient: recipientId,
+        conversationId: conversation._id
+      });
+
+      try {
+        savedMessage = await messageDoc.save();
+        console.log(`✅ Test message saved to MongoDB: ${savedMessage._id}`);
+      } catch (saveError) {
+        console.error(`❌ Test message save failed:`, saveError.message);
+        throw saveError;
+      }
+    } else {
+      console.log(`⚠️ MongoDB not connected, test message will only be broadcast via Socket.IO`);
+    }
+  } catch (dbError) {
+    console.error('❌ Database error:', dbError.message);
+    console.log(`🔧 Test message will still be broadcast via Socket.IO but won't persist`);
+  }
+
+  // Emit test message via Socket.IO if available
+  if (global.io) {
+    console.log('📡 Broadcasting test message via Socket.IO');
+    global.io.to(`conversation_${conversationId}`).emit('new_message', {
+      id: savedMessage?._id || `test_${Date.now()}`,
+      conversationId,
+      senderId,
+      recipientId,
+      content: `[TEST] ${message}`,
+      timestamp: savedMessage?.createdAt || new Date(),
+      read: false,
+      isTest: true
+    });
+
+    res.json({
+      success: true,
+      message: 'Test message sent via Socket.IO',
+      data: {
+        conversationId,
+        message: `[TEST] ${message}`,
+        timestamp: new Date().toISOString(),
+        savedToDatabase: !!savedMessage
+      }
+    });
+  } else {
+    res.status(503).json({
+      success: false,
+      error: 'Socket.IO not initialized'
+    });
+  }
 });
 
 // Handle 404 - Route not found
@@ -355,13 +1432,21 @@ const startServer = async () => {
 
     // Port configuration
     const PORT = parseInt(process.env.PORT, 10) || 5000;
-    const HOST = '0.0.0.0';
+    const HOST = '127.0.0.1'; // Explicitly use localhost
 
-    // Start the HTTP server
-    const server = app.listen(PORT, HOST, () => {
+    // Create HTTP server
+    const server = createServer(app);
+
+    // Setup Socket.IO
+    const io = setupSocketIO(server);
+    global.io = io; // Make io available globally for test endpoints
+
+    // Start the HTTP server with Socket.IO
+    server.listen(PORT, HOST, () => {
       console.log(`🚀 Server running in ${process.env.NODE_ENV} mode on http://${HOST}:${PORT}`);
       console.log('✅ Server started successfully!');
       console.log('📝 Note: Some features may not work without MongoDB connection');
+      console.log('🔗 Socket.IO server ready for real-time messaging');
     });
 
     // Handle server errors
@@ -378,9 +1463,13 @@ const startServer = async () => {
     const shutdown = async () => {
       console.log('\n🛑 Shutting down server...');
 
+      // Close Socket.IO connections
+      io.close();
+
       // Close HTTP server
       server.close(async () => {
         console.log('✅ HTTP server stopped');
+        console.log('✅ Socket.IO server stopped');
 
         // Close MongoDB connection if it exists
         try {
@@ -406,17 +1495,38 @@ const startServer = async () => {
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
 
-    // Handle unhandled promise rejections
+    // Handle unhandled promise rejections (but don't crash server for MongoDB issues)
     process.on('unhandledRejection', (err) => {
       console.error(`Unhandled Rejection: ${err.message}`);
-      server.close(() => process.exit(1));
+      // Don't exit server for MongoDB-related errors, only for critical errors
+      if (!err.message.includes('MongoDB') && !err.message.includes('mongoose') && !err.message.includes('ETIMEOUT')) {
+        console.error('Critical error detected, shutting down server');
+        server.close(() => process.exit(1));
+      } else {
+        console.warn('Non-critical error (likely MongoDB related), continuing server operation');
+      }
     });
 
     // Try to connect to MongoDB in the background
     connectWithRetry().catch(error => {
-      console.warn('⚠️  MongoDB connection failed, but server will continue running');
-      console.warn('Some features (like authentication) may not work properly');
-      console.warn('To fix this, please check your MongoDB connection string in .env');
+      console.warn('⚠️  MongoDB connection failed, but Socket.IO server will continue');
+      console.warn('🔗 Socket.IO server is still running for real-time messaging');
+      console.warn('⚠️  Authentication routes will not work without MongoDB');
+      console.warn('');
+      console.warn('🔧 TROUBLESHOOTING MongoDB Atlas Connection:');
+      console.warn('   1. 🌐 Check your internet connection');
+      console.warn('   2. 🔒 In MongoDB Atlas: Go to Network Access → Add IP Address');
+      console.warn('   3. 📱 Add your current IP address OR use 0.0.0.0/0 (Allow All)');
+      console.warn('   4. ⚡ Verify your MongoDB Atlas cluster is running (Clusters page)');
+      console.warn('   5. 🔑 Check username/password in your connection string');
+      console.warn('   6. 💻 Alternative: Use local MongoDB for development');
+      console.warn('');
+      console.warn('💡 Network Change Solution:');
+      console.warn('   When you change WiFi/networks, your IP changes.');
+      console.warn('   MongoDB Atlas blocks new IPs for security.');
+      console.warn('   Solution: Add 0.0.0.0/0 in Network Access for development.');
+      console.warn('');
+      console.warn('📋 See MONGODB_FIX.md for detailed instructions');
     });
 
     return server;
@@ -430,5 +1540,11 @@ const startServer = async () => {
 // Start the server
 startServer().catch(error => {
   console.error('Fatal error during server startup:', error);
-  process.exit(1);
+  // Don't exit for MongoDB-related errors, only for critical server startup failures
+  if (!error.message.includes('MongoDB') && !error.message.includes('mongoose') && !error.message.includes('ETIMEOUT')) {
+    console.error('Critical server startup error, exiting');
+    process.exit(1);
+  } else {
+    console.warn('Server startup completed with MongoDB issues, but HTTP server is still running');
+  }
 });

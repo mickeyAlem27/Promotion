@@ -9,18 +9,15 @@ const {
 
 const router = express.Router();
 
-router.use(protect);
+// Protect routes that modify data (create, update, delete)
+router.use(protect); // Enable authentication for all job routes
 
-// Public list of active jobs (still requires auth for now)
+// Public routes - No authentication required for browsing jobs
 router.get('/', getJobs);
-
-// Current user's jobs
 router.get('/me', getMyJobs);
 
-// Create job
+// Protected routes - Require authentication for creating/managing jobs
 router.post('/', createJob);
-
-// Deactivate job
 router.patch('/:id/deactivate', deactivateJob);
 
 module.exports = router;

@@ -4,6 +4,11 @@ const ErrorResponse = require('../utils/errorResponse');
 // Create a new job
 exports.createJob = async (req, res, next) => {
   try {
+    // Check if user is authenticated
+    if (!req.user || !req.user._id) {
+      return next(new ErrorResponse('Authentication required to create jobs', 401));
+    }
+
     const {
       title,
       description,
@@ -70,6 +75,11 @@ exports.createJob = async (req, res, next) => {
 };
 exports.getMyJobs = async (req, res, next) => {
   try {
+    // If no authenticated user, return empty array or handle as needed
+    if (!req.user || !req.user._id) {
+      return res.json({ success: true, count: 0, data: [], message: 'Authentication required to view your jobs' });
+    }
+
     const jobs = await Job.find({ postedBy: req.user._id }).sort({ createdAt: -1 });
     res.json({ success: true, count: jobs.length, data: jobs });
   } catch (err) {
@@ -90,6 +100,11 @@ exports.getJobs = async (req, res, next) => {
 // Deactivate a job (owner only)
 exports.deactivateJob = async (req, res, next) => {
   try {
+    // Check if user is authenticated
+    if (!req.user || !req.user._id) {
+      return next(new ErrorResponse('Authentication required to modify jobs', 401));
+    }
+
     const job = await Job.findById(req.params.id);
     if (!job) return next(new ErrorResponse('Job not found', 404));
     if (String(job.postedBy) !== String(req.user._id)) {

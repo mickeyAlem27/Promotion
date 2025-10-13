@@ -1,13 +1,22 @@
 const User = require('../models/User');
+const mongoose = require('mongoose');
 const asyncHandler = require('express-async-handler');
-
 // @desc    Get all users (except current user)
 // @route   GET /api/users
 // @access  Private
 const getUsers = asyncHandler(async (req, res) => {
   try {
-    // Exclude the current user and select only necessary fields
-    const users = await User.find({ _id: { $ne: req.user.id } })
+    // Check if MongoDB is connected
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        error: 'Database not available. User management requires database connection.',
+        mongodb_status: 'disconnected'
+      });
+    }
+
+    // Get all users without excluding current user
+    const users = await User.find({})
       .select('-password -resetPasswordToken -resetPasswordExpire -emailVerificationToken -emailVerificationExpire')
       .sort({ firstName: 1 });
 
@@ -24,23 +33,35 @@ const getUsers = asyncHandler(async (req, res) => {
 const searchUsers = asyncHandler(async (req, res) => {
   try {
     const { q } = req.query;
-    
+
     if (!q) {
       return res.status(400).json({ message: 'Search query is required' });
     }
 
-    const users = await User.find({
-      $and: [
-        { _id: { $ne: req.user.id } },
-        {
+    // If no authenticated user, return all matching users
+    const searchQuery = req.user && req.user.id
+      ? {
+          $and: [
+            { _id: { $ne: req.user.id } },
+            {
+              $or: [
+                { firstName: { $regex: q, $options: 'i' } },
+                { lastName: { $regex: q, $options: 'i' } },
+                { role: { $regex: q, $options: 'i' } }
+              ]
+            }
+          ]
+        }
+      : {
           $or: [
             { firstName: { $regex: q, $options: 'i' } },
             { lastName: { $regex: q, $options: 'i' } },
             { role: { $regex: q, $options: 'i' } }
           ]
-        }
-      ]
-    }).select('-password -resetPasswordToken -resetPasswordExpire -emailVerificationToken -emailVerificationExpire');
+        };
+
+    const users = await User.find(searchQuery)
+      .select('-password -resetPasswordToken -resetPasswordExpire -emailVerificationToken -emailVerificationExpire');
 
     res.json(users);
   } catch (error) {

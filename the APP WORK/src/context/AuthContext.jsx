@@ -15,7 +15,14 @@ export const AuthProvider = ({ children }) => {
       try {
         const token = localStorage.getItem('token');
         if (token) {
-          const response = await authAPI.getMe();
+          // Add timeout to prevent hanging
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Auth check timeout')), 5000)
+          );
+
+          const authPromise = authAPI.getMe();
+
+          const response = await Promise.race([authPromise, timeoutPromise]);
           if (response.data) {
             setUser(response.data);
             setIsAuthenticated(true);
@@ -23,33 +30,57 @@ export const AuthProvider = ({ children }) => {
         }
       } catch (error) {
         console.error('Auth check error:', error);
-        // Clear invalid token
+        // Clear invalid token but don't block the app
         localStorage.removeItem('token');
+        setError('Authentication check failed, but app will continue');
       } finally {
         setIsLoading(false);
       }
     };
 
-    checkAuth();
+    // Delay auth check slightly to let the app render first
+    const timer = setTimeout(checkAuth, 100);
+    return () => clearTimeout(timer);
   }, []);
 
   // Login function
   const login = useCallback(async (email, password) => {
     setIsLoading(true);
     setError('');
-    
+
     try {
-      const response = await authAPI.login({ email, password });
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Login timeout')), 10000)
+      );
+
+      const loginPromise = authAPI.login({ email, password });
+      const response = await Promise.race([loginPromise, timeoutPromise]);
+
       console.log('Login response structure:', response);
 
       if (response.token) {
         localStorage.setItem('token', response.token);
         console.log('Token stored in localStorage');
 
-        const userResponse = await authAPI.getMe();
-        setUser(userResponse.data);
-        setIsAuthenticated(true);
-        return { success: true };
+        // Get user data with timeout
+        try {
+          const userTimeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('User data fetch timeout')), 5000)
+          );
+
+          const userPromise = authAPI.getMe();
+          const userResponse = await Promise.race([userPromise, userTimeoutPromise]);
+
+          setUser(userResponse.data);
+          setIsAuthenticated(true);
+          return { success: true };
+        } catch (userError) {
+          console.error('Error fetching user data after login:', userError);
+          // Still consider login successful if we got a token
+          setIsAuthenticated(true);
+          return { success: true };
+        }
       }
       return { success: false, message: 'Login failed - no token received' };
     } catch (error) {
@@ -79,9 +110,16 @@ export const AuthProvider = ({ children }) => {
   const register = useCallback(async (userData) => {
     setIsLoading(true);
     setError('');
-    
+
     try {
-      const response = await authAPI.register(userData);
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Registration timeout')), 10000)
+      );
+
+      const registerPromise = authAPI.register(userData);
+      const response = await Promise.race([registerPromise, timeoutPromise]);
+
       if (response.data.success) {
         // Return success without auto-login, let the component handle the navigation
         return { success: true };
@@ -95,7 +133,7 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [login]);
+  }, []);
 
   // Update user function
   const updateUser = useCallback((updatedUser) => {
@@ -106,6 +144,7 @@ export const AuthProvider = ({ children }) => {
     <AuthContext.Provider
       value={{
         user,
+        token: localStorage.getItem('token'),
         isAuthenticated,
         isLoading,
         error,
