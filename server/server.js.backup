@@ -472,27 +472,9 @@ const setupSocketIO = (server) => {
       }
     });
 
-    // Handle user heartbeat for keeping connection alive
-    socket.on('user_heartbeat', (data) => {
-      console.log(`💓 Heartbeat received from user ${data.userId}`);
+    console.log(`🔗 User ${socket.userId} connected via Socket.IO`);
 
-      // Update user's last seen timestamp if user is authenticated
-      if (data.userId && socket.userId === data.userId) {
-        // User is still active, update their status
-        socket.emit('heartbeat_ack', {
-          timestamp: new Date(),
-          userId: data.userId
-        });
-      }
-    });
-
-    // Handle user room rejoin after reconnection
-    socket.on('rejoin_user_room', (data) => {
-      if (data.userId) {
-        socket.join(`user_${data.userId}`);
-        console.log(`🔗 User ${data.userId} rejoined their personal room`);
-      }
-    });
+    // Add authenticated user to connected users map
     connectedUsers.set(socket.userId, {
       socketId: socket.id,
       userId: socket.userId,
@@ -961,136 +943,20 @@ const setupSocketIO = (server) => {
       }
     });
 
-    // Handle notification events
-    socket.on('send_notification', async (data) => {
-      console.log('📢 Sending notification:', data);
+    // Handle user disconnect
+    socket.on('disconnect', () => {
+      console.log(`🔌 User ${socket.userId} disconnected from Socket.IO`);
 
-      try {
-        // Save notification to database if MongoDB is connected
-        if (mongoose.connection.readyState === 1 && data.targetUserId) {
-          const Notification = require('./models/Notification');
+      // Only remove from connected users if they were properly tracked
+      if (socket.userId && connectedUsers.has(socket.userId)) {
+        connectedUsers.delete(socket.userId);
 
-          const notification = new Notification({
-            recipientId: data.targetUserId,
-            senderId: socket.userId,
-            type: data.type || 'info',
-            title: data.title,
-            message: data.message,
-            data: data.data || {}
-          });
-
-          await notification.save();
-          console.log('💾 Notification saved to database');
-        }
-
-        // Broadcast notification to all connected users or specific user
-        if (data.targetUserId) {
-          // Send to specific user
-          io.to(`user_${data.targetUserId}`).emit('new_notification', {
-            id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            type: data.type || 'info',
-            title: data.title,
-            message: data.message,
-            timestamp: new Date(),
-            read: false,
-            senderId: socket.userId,
-            data: data.data || {}
-          });
-        } else {
-          // Broadcast to all users
-          socket.broadcast.emit('new_notification', {
-            id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            type: data.type || 'info',
-            title: data.title,
-            message: data.message,
-            timestamp: new Date(),
-            read: false,
-            senderId: socket.userId,
-            data: data.data || {}
-          });
-        }
-      } catch (error) {
-        console.error('❌ Error sending notification:', error);
-      }
-    });
-
-    // Handle marking notifications as read
-    socket.on('mark_notification_read', async (notificationId) => {
-      console.log('✅ Marking notification as read:', notificationId);
-
-      try {
-        // Update notification in database if MongoDB is connected
-        if (mongoose.connection.readyState === 1) {
-          const Notification = require('./models/Notification');
-
-          // Check if notificationId is a database ID or a generated ID
-          if (notificationId.startsWith('notif_')) {
-            // This is a generated ID, find the actual notification
-            const notifications = await Notification.find({
-              recipientId: socket.userId
-            }).sort({ createdAt: -1 }).limit(10);
-
-            // Find the most recent notification that matches the criteria
-            const latestNotification = notifications.find(n => n.read === false);
-            if (latestNotification) {
-              latestNotification.read = true;
-              await latestNotification.save();
-            }
-          } else {
-            // This is a database ID
-            await Notification.findByIdAndUpdate(notificationId, { read: true });
-          }
-        }
-      } catch (error) {
-        console.error('❌ Error marking notification as read:', error);
-      }
-
-      // Broadcast the read status to all clients
-      io.emit('notification_read', {
-        notificationId,
-        userId: socket.userId,
-        timestamp: new Date()
-      });
-    });
-
-    // Handle getting notifications for a user
-    socket.on('get_notifications', async () => {
-      try {
-        if (mongoose.connection.readyState === 1) {
-          const Notification = require('./models/Notification');
-
-          // Get recent notifications for this user
-          const notifications = await Notification.find({
-            recipientId: socket.userId
-          })
-          .sort({ createdAt: -1 })
-          .limit(20)
-          .populate('senderId', 'firstName lastName photo role');
-
-          socket.emit('notifications_list', {
-            notifications: notifications.map(notif => ({
-              id: notif._id,
-              type: notif.type,
-              title: notif.title,
-              message: notif.message,
-              timestamp: notif.createdAt,
-              read: notif.read,
-              sender: notif.senderId ? {
-                _id: notif.senderId._id,
-                firstName: notif.senderId.firstName,
-                lastName: notif.senderId.lastName,
-                photo: notif.senderId.photo,
-                role: notif.senderId.role
-              } : null,
-              data: notif.data || {}
-            }))
-          });
-        } else {
-          socket.emit('notifications_list', { notifications: [] });
-        }
-      } catch (error) {
-        console.error('Error getting notifications:', error);
-        socket.emit('notifications_error', { error: 'Failed to load notifications' });
+        // Broadcast user offline status to all other users (only if they were properly connected)
+        socket.broadcast.emit('user_offline', {
+          userId: socket.userId,
+          timestamp: new Date(),
+          isDemo: false
+        });
       }
     });
   });
@@ -1369,27 +1235,7 @@ app.post('/api/messages/mark-as-read', async (req, res) => {
         });
       }
 
-      res.status(200).json({
-        success: true,
-        message: 'Messages marked as read successfully'
-      });
-    } else {
-      res.status(503).json({
-        success: false,
-        error: 'Database not available',
-        mongodb_status: 'disconnected'
-      });
-    }
-  } catch (error) {
-    console.error('Error marking messages as read:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-// Get unread message counts for a user
+      // Get unread message counts for a user
 app.get('/api/messages/unread-counts/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -1440,6 +1286,7 @@ app.get('/api/messages/unread-counts/:userId', async (req, res) => {
     console.error('Error getting unread counts:', error);
     res.status(500).json({
       success: false,
+      error: error.message
     });
   }
 });
